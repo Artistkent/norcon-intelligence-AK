@@ -1,4 +1,23 @@
-import { useState } from "react";
+import React, { useState } from "react";
+function EditableSelect({ value, onChange, options, disabled, placeholder }) {
+  const [custom, setCustom] = React.useState(false);
+  const [customVal, setCustomVal] = React.useState("");
+  if (custom) {
+    return <input autoFocus value={customVal} onChange={e=>setCustomVal(e.target.value)}
+      onBlur={()=>{ if(customVal.trim()) onChange(customVal.trim()); setCustom(false); }}
+      onKeyDown={e=>{ if(e.key==="Enter"){ onChange(customVal.trim()||value); setCustom(false); } if(e.key==="Escape") setCustom(false); }}
+      style={{...inp, borderColor:"#3a9962"}}/>;
+  }
+  return (
+    <select style={inp} value={value||""} disabled={disabled}
+      onChange={e=>{ if(e.target.value==="Custom..."){setCustom(true);setCustomVal("");} else onChange(e.target.value); }}>
+      <option value="">{placeholder||"Select..."}</option>
+      {options.map(o=><option key={o} value={o} style={{background:"#183D28"}}>{o}</option>)}
+      <option value="Custom...">Custom...</option>
+    </select>
+  );
+}
+
 
 const C = { surface:"#122E1E", surface2:"#183D28", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2" };
 const inp = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:5, color:C.sage, fontSize:12, padding:"6px 9px", outline:"none", boxSizing:"border-box", fontFamily:"inherit", width:"100%" };
@@ -60,15 +79,10 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
               <div style={{gridColumn:"1/-1"}}><Lbl c="Risk Name"/><input style={inp} value={r.name||""} disabled={locked} onChange={e=>update(i,"name",e.target.value)} placeholder="Short risk name"/></div>
               <div><Lbl c="Category"/>
-                <select style={inp} value={r.category||""} disabled={locked} onChange={e=>update(i,"category",e.target.value)}>
-                  <option value="">Select...</option>
-                  {CATEGORIES.map(c=><option key={c} value={c} style={{background:C.surface2}}>{c}</option>)}
-                </select>
+                <EditableSelect value={r.category||""} disabled={locked} onChange={v=>update(i,"category",v)} options={CATEGORIES} placeholder="Select..."/>
               </div>
               <div><Lbl c="Response"/>
-                <select style={inp} value={r.response||"Avoid"} disabled={locked} onChange={e=>update(i,"response",e.target.value)}>
-                  {RESPONSES.map(r=><option key={r} value={r} style={{background:C.surface2}}>{r}</option>)}
-                </select>
+                <EditableSelect value={r.response||"Avoid"} disabled={locked} onChange={v=>update(i,"response",v)} options={RESPONSES} placeholder="Select..."/>
               </div>
               <div><Lbl c="Cause / Trigger"/><input style={inp} value={r.cause||""} disabled={locked} onChange={e=>update(i,"cause",e.target.value)} placeholder="What would trigger this?"/></div>
               <div><Lbl c="Potential Impact"/><input style={inp} value={r.potentialImpact||""} disabled={locked} onChange={e=>update(i,"potentialImpact",e.target.value)} placeholder="Consequence if it occurs"/></div>
