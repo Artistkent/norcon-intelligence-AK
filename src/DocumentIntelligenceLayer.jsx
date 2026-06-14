@@ -366,6 +366,12 @@ ID format: R-101,R-102... | I-101... | SH-001,SH-002... | D-001... | ACT-001... 
       setElements(els);
       setStage("review");
       setLoading(false);
+      // Auto-advance to Personalisation Layer after short delay
+      if (onSendToPersonalisation) {
+        setTimeout(() => {
+          onSendToPersonalisation(parsed.charter || null, els.filter(e => e._state !== "rejected"));
+        }, 1800);
+      }
 
     } catch(err){
       setLoading(false);

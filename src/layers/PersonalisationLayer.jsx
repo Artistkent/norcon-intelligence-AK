@@ -18,61 +18,66 @@ const C = {
 };
 
 const STATUS_COLORS = {
-  empty:        { dot:"#1F4D34",  label:"Empty"       },
-  'ai-draft':   { dot:"#3a9ce0",  label:"AI Draft"    },
-  'in-progress':{ dot:"#e0a23a",  label:"In Progress" },
-  approved:     { dot:"#3ae0a2",  label:"Approved"    },
+  empty:         { dot:"#1F4D34",  label:"Empty"        },
+  "ai-draft":    { dot:"#3a9ce0",  label:"AI Draft"     },
+  "in-progress": { dot:"#e0a23a",  label:"In Progress"  },
+  approved:      { dot:"#3ae0a2",  label:"Approved"     },
 };
 
 const SHEET_COMPONENTS = {
-  '01': Sheet01Charter,
-  '02': Sheet02Team,
-  '03': Sheet03Schedule,
-  '04': Sheet04RACI,
-  '05': Sheet05Risks,
-  '06': Sheet06Change,
-  '07': Sheet07KDTracker,
-  '08': Sheet08Stakeholders,
-  '09': Sheet09Comms,
+  "01": Sheet01Charter,
+  "02": Sheet02Team,
+  "03": Sheet03Schedule,
+  "04": Sheet04RACI,
+  "05": Sheet05Risks,
+  "06": Sheet06Change,
+  "07": Sheet07KDTracker,
+  "08": Sheet08Stakeholders,
+  "09": Sheet09Comms,
 };
 
 export default function PersonalisationLayer({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav }) {
   const { l2, l1, project } = state;
-  const current = l2.currentSheet;
-  const sheets  = l2.sheets;
-
-  const approvedCount   = Object.values(sheets).filter(s => s.locked).length;
-  const totalCount      = SHEETS.length;
-  const progressPercent = Math.round((approvedCount / totalCount) * 100);
-
+  const current  = l2.currentSheet;
+  const sheets   = l2.sheets;
   const currentIdx  = SHEETS.findIndex(s => s.id === current);
   const prevSheet   = currentIdx > 0 ? SHEETS[currentIdx - 1] : null;
   const nextSheet   = currentIdx < SHEETS.length - 1 ? SHEETS[currentIdx + 1] : null;
-
+  const approvedCount = Object.values(sheets).filter(s => s.locked).length;
   const SheetComponent = SHEET_COMPONENTS[current];
+
+  // Next button: approve+lock current, then navigate
+  const handleNext = () => {
+    if (!nextSheet) return;
+    if (!sheets[current]?.locked) {
+      onSheetApprove(current);
+    }
+    onSheetNav(nextSheet.id);
+  };
+
+  // Back button: just navigate, no lock
+  const handleBack = () => {
+    if (prevSheet) onSheetNav(prevSheet.id);
+  };
 
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden" }}>
 
       {/* Progress bar */}
-      <div style={{ background:C.surface2, borderBottom:`1px solid ${C.border}`,
-        padding:"10px 20px", flexShrink:0 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:11,
-          color:C.muted, marginBottom:6 }}>
+      <div style={{ background:C.surface2, borderBottom:`1px solid ${C.border}`, padding:"10px 20px", flexShrink:0 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted, marginBottom:6 }}>
           <span>Project setup progress</span>
-          <span style={{ color:C.dim, fontWeight:600 }}>{approvedCount} of {totalCount} sheets approved</span>
+          <span style={{ color:C.dim, fontWeight:600 }}>{approvedCount} of {SHEETS.length} sheets approved</span>
         </div>
-        {/* Sheet progress dots */}
         <div style={{ display:"flex", gap:4 }}>
           {SHEETS.map(s => {
-            const st     = sheets[s.id]?.status || 'empty';
+            const st    = sheets[s.id]?.status || "empty";
             const isCurr = s.id === current;
-            const col    = STATUS_COLORS[st]?.dot || C.border;
+            const col   = STATUS_COLORS[st]?.dot || C.border;
             return (
               <div key={s.id} title={`${s.label} — ${STATUS_COLORS[st]?.label}`}
                 onClick={() => isSheetAccessible(s.id, sheets) && onSheetNav(s.id)}
-                style={{ flex:1, height:5, borderRadius:3,
-                  background: col,
+                style={{ flex:1, height:5, borderRadius:3, background:col,
                   opacity: isCurr ? 1 : 0.6,
                   outline: isCurr ? `2px solid ${C.accentL}` : "none",
                   outlineOffset:1,
@@ -88,16 +93,14 @@ export default function PersonalisationLayer({ state, onSheetUpdate, onSheetAppr
         {/* Sidebar */}
         <div style={{ width:200, minWidth:180, borderRight:`1px solid ${C.border}`,
           display:"flex", flexDirection:"column", flexShrink:0, overflowY:"auto" }}>
-
           <div style={{ padding:"10px 14px 6px", fontSize:10, fontWeight:700,
             color:C.muted, textTransform:"uppercase", letterSpacing:".8px",
             borderBottom:`1px solid ${C.border}` }}>Sheets</div>
-
           {SHEETS.map(s => {
-            const st          = sheets[s.id]?.status || 'empty';
-            const active      = s.id === current;
-            const accessible  = isSheetAccessible(s.id, sheets);
-            const stCfg       = STATUS_COLORS[st] || STATUS_COLORS.empty;
+            const st         = sheets[s.id]?.status || "empty";
+            const active     = s.id === current;
+            const accessible = isSheetAccessible(s.id, sheets);
+            const stCfg      = STATUS_COLORS[st] || STATUS_COLORS.empty;
             return (
               <div key={s.id} onClick={() => accessible && onSheetNav(s.id)}
                 style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 14px",
@@ -108,7 +111,7 @@ export default function PersonalisationLayer({ state, onSheetUpdate, onSheetAppr
                 <div style={{ width:6, height:6, borderRadius:"50%", background:stCfg.dot, flexShrink:0 }}/>
                 <span style={{ fontSize:12, color: active ? C.sage : C.dim, flex:1 }}>{s.label}</span>
                 {!accessible && <span style={{ fontSize:10, color:C.muted }}>🔒</span>}
-                {sheets[s.id]?.locked && <span style={{ fontSize:10 }}>✓</span>}
+                {sheets[s.id]?.locked && <span style={{ fontSize:11, color:C.accentL }}>✓</span>}
               </div>
             );
           })}
@@ -140,35 +143,32 @@ export default function PersonalisationLayer({ state, onSheetUpdate, onSheetAppr
             display:"flex", alignItems:"center", gap:12, flexShrink:0, background:C.surface }}>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:15, fontWeight:700, color:C.sage }}>
-                {SHEETS.find(s=>s.id===current)?.label}
+                {SHEETS.find(s => s.id === current)?.label}
               </div>
               <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>
-                Sheet {current} of 09 · {STATUS_COLORS[sheets[current]?.status]?.label || 'Empty'}
+                Sheet {current} of 09
+                {" · "}{STATUS_COLORS[sheets[current]?.status]?.label || "Empty"}
                 {sheets[current]?.locked && " · Locked"}
               </div>
             </div>
-
-            {/* Sheet actions */}
-            <div style={{ display:"flex", gap:8 }}>
-              {sheets[current]?.locked ? (
-                <button onClick={() => onSheetUnlock(current)}
-                  style={{ padding:"7px 14px", background:"none", border:`1px solid ${C.border}`,
-                    borderRadius:5, color:C.dim, fontSize:11, fontWeight:600, cursor:"pointer" }}>
-                  🔓 Unlock Sheet
-                </button>
-              ) : (
-                <button onClick={() => onSheetApprove(current)}
-                  style={{ padding:"7px 14px", background:C.accent, border:"none",
-                    borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                  ✓ Approve & Lock
-                </button>
-              )}
-            </div>
+            {sheets[current]?.locked ? (
+              <button onClick={() => onSheetUnlock(current)}
+                style={{ padding:"7px 14px", background:"none", border:`1px solid ${C.border}`,
+                  borderRadius:5, color:C.dim, fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                Unlock to Edit
+              </button>
+            ) : (
+              <button onClick={() => onSheetApprove(current)}
+                style={{ padding:"7px 14px", background:C.accent, border:"none",
+                  borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                Approve & Lock
+              </button>
+            )}
           </div>
 
           {/* Sheet content */}
           <div style={{ flex:1, overflowY:"auto", padding:"20px" }}>
-            {SheetComponent ? (
+            {SheetComponent && (
               <SheetComponent
                 data={sheets[current]?.data || {}}
                 locked={sheets[current]?.locked || false}
@@ -177,35 +177,26 @@ export default function PersonalisationLayer({ state, onSheetUpdate, onSheetAppr
                 loginCodes={l2.loginCodes}
                 allSheets={sheets}
                 onUpdate={(data, status) => onSheetUpdate(current, data, status)}/>
-            ) : (
-              <div style={{ color:C.muted, textAlign:"center", padding:40 }}>
-                Sheet {current} — coming soon
-              </div>
             )}
           </div>
 
-          {/* Sheet navigation */}
+          {/* Navigation — Next auto-approves current sheet */}
           <div style={{ padding:"12px 20px", borderTop:`1px solid ${C.border}`,
             display:"flex", alignItems:"center", justifyContent:"space-between",
             background:C.surface, flexShrink:0 }}>
-            <button onClick={() => prevSheet && onSheetNav(prevSheet.id)}
-              disabled={!prevSheet}
-              style={{ padding:"7px 14px", background:"none", border:`1px solid ${C.border}`,
-                borderRadius:5, color: prevSheet ? C.dim : C.muted, fontSize:11,
-                fontWeight:600, cursor: prevSheet ? "pointer" : "not-allowed",
-                opacity: prevSheet ? 1 : 0.4, display:"flex", alignItems:"center", gap:6 }}>
-              ← {prevSheet?.label || ''}
+            <button onClick={handleBack} disabled={!prevSheet}
+              style={{ padding:"7px 16px", background:"none", border:`1px solid ${C.border}`,
+                borderRadius:5, color: prevSheet ? C.dim : C.muted, fontSize:12, fontWeight:600,
+                cursor: prevSheet ? "pointer" : "not-allowed", opacity: prevSheet ? 1 : 0.4 }}>
+              {String.fromCharCode(8592)} {prevSheet?.label || ""}
             </button>
-            <div style={{ fontSize:11, color:C.muted }}>
-              {currentIdx + 1} / {SHEETS.length}
-            </div>
-            <button onClick={() => nextSheet && onSheetNav(nextSheet.id)}
-              disabled={!nextSheet}
-              style={{ padding:"7px 14px", background:"none", border:`1px solid ${C.border}`,
-                borderRadius:5, color: nextSheet ? C.dim : C.muted, fontSize:11,
-                fontWeight:600, cursor: nextSheet ? "pointer" : "not-allowed",
-                opacity: nextSheet ? 1 : 0.4, display:"flex", alignItems:"center", gap:6 }}>
-              {nextSheet?.label || ''} →
+            <div style={{ fontSize:11, color:C.muted }}>{currentIdx + 1} / {SHEETS.length}</div>
+            <button onClick={handleNext} disabled={!nextSheet}
+              style={{ padding:"7px 16px", background: nextSheet ? C.accent : "none",
+                border:`1px solid ${nextSheet ? C.accent : C.border}`,
+                borderRadius:5, color: nextSheet ? "#fff" : C.muted, fontSize:12, fontWeight:700,
+                cursor: nextSheet ? "pointer" : "not-allowed", opacity: nextSheet ? 1 : 0.4 }}>
+              {nextSheet?.label || ""} {String.fromCharCode(8594)}
             </button>
           </div>
         </div>
