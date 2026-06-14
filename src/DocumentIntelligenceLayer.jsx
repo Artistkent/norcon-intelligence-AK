@@ -211,7 +211,7 @@ function CharterPanel({ charter }){
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
-export default function DocumentIntelligenceLayer(){
+export default function DocumentIntelligenceLayer({ onSendToPersonalisation }){
   const [inputTab,  setInputTab]  = useState("upload");
   const [viewTab,   setViewTab]   = useState("all");
   const [file,      setFile]      = useState(null);
@@ -667,6 +667,14 @@ ID format: R-101,R-102... | I-101... | SH-001,SH-002... | D-001... | ACT-001... 
                 textTransform:"uppercase", letterSpacing:".4px" }}>
               ⬇ Export Register
             </button>
+            {onSendToPersonalisation && elements.length > 0 && (
+              <button onClick={() => onSendToPersonalisation(charter, elements.filter(e => e._state !== "rejected"))}
+                style={{ padding:"5px 14px", background:C.accent, border:"none",
+                  borderRadius:4, color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer",
+                  textTransform:"uppercase", letterSpacing:".4px" }}>
+                Send to Personalisation Layer →
+              </button>
+            )}
           </div>
 
           {/* Content */}
