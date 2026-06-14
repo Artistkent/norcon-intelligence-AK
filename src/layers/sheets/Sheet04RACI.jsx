@@ -71,19 +71,31 @@ export default function Sheet04RACI({ data, locked, loginCodes, allSheets, onUpd
     });
   };
 
-  const [matrix,     setMatrix]     = useState(() => data.raciRows?.length > 0 ? data.raciRows : buildAutoMatrix());
-  const [customRows, setCustomRows] = useState(data.customRows || []);
+  // Always prefer saved raciRows, but if empty try to build from schedule
+  const initMatrix = () => {
+    if (data.raciRows?.length > 0) return data.raciRows;
+    const built = buildAutoMatrix();
+    return built;
+  };
 
-  // Re-sync when schedule changes and matrix is empty
-  useEffect(() => {
-    if (matrix.length === 0 && (activities.length > 0 || milestones.length > 0)) {
-      setMatrix(buildAutoMatrix());
-    }
-  }, [activities.length, milestones.length, members.length]);
+  const [matrix,     setMatrix]     = useState(initMatrix);
+  const [customRows, setCustomRows] = useState(data.customRows || []);
 
   const save = (mat, cust) => {
     onUpdate({ raciRows:mat, customRows:cust }, 'in-progress');
   };
+
+  // Auto-sync once when schedule data arrives but matrix is still empty
+  const scheduleKey = activities.length + "_" + milestones.length + "_" + members.length;
+  useEffect(() => {
+    if (matrix.length === 0) {
+      const built = buildAutoMatrix();
+      if (built.length > 0) {
+        setMatrix(built);
+        save(built, customRows);
+      }
+    }
+  }, [scheduleKey]);
 
   const setCell = (rowIdx, code, value) => {
     const isCustom = rowIdx >= matrix.length;
