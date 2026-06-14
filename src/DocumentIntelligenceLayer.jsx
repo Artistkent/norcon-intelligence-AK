@@ -261,7 +261,7 @@ export default function DocumentIntelligenceLayer() {
     await sleep(600); setStageStep("classify", "Classifying elements...");
     await sleep(400); setStageStep("map", "Mapping to registers...");
 
-    const maxDoc = docText.length > 5500 ? docText.slice(0,5500)+"\n[... truncated ...]" : docText;
+        const maxDoc = docText.length > 15000 ? docText.slice(0,15000)+"\n[... truncated ...]" : docText;
     const hint = docType!=="auto" ? `Document type: ${docType}. ` : "";
     const pn = projName ? `Project name: "${projName}". ` : "";
 
@@ -296,7 +296,7 @@ ${maxDoc}`;
       const res = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] })
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] })
       });
            
       if (!res.ok) { const t = await res.text(); throw new Error(`API ${res.status}: ${t.slice(0,200)}`); }
