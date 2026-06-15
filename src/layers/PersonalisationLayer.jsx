@@ -36,7 +36,7 @@ const SHEET_COMPONENTS = {
   "09": Sheet09Comms,
 };
 
-export default function PersonalisationLayer({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onGoToL3 }) {
+export default function PersonalisationLayer({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onGoToL3, onLaunch, onLogout }) {
   const { l2, l1, project } = state;
   const current  = l2.currentSheet;
   const sheets   = l2.sheets;
