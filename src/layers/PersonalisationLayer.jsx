@@ -9,6 +9,7 @@ import Sheet06Change from "./sheets/Sheet06Change.jsx";
 import Sheet07KDTracker from "./sheets/Sheet07KDTracker.jsx";
 import Sheet08Stakeholders from "./sheets/Sheet08Stakeholders.jsx";
 import Sheet09Comms from "./sheets/Sheet09Comms.jsx";
+import Sheet10Sustainability from "./sheets/Sheet10Sustainability.jsx";
 
 const C = {
   bg:"#0D2B1B", surface:"#122E1E", surface2:"#183D28", border:"#1F4D34",
@@ -34,6 +35,7 @@ const SHEET_COMPONENTS = {
   "07": Sheet07KDTracker,
   "08": Sheet08Stakeholders,
   "09": Sheet09Comms,
+  "10": Sheet10Sustainability,
 };
 
 export default function PersonalisationLayer({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onGoToL3, onLaunch, onLogout }) {
@@ -157,7 +159,7 @@ export default function PersonalisationLayer({ state, onSheetUpdate, onSheetAppr
                 {SHEETS.find(s => s.id === current)?.label}
               </div>
               <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>
-                Sheet {current} of 09
+                Sheet {current} of {SHEETS.length}
                 {" · "}{STATUS_COLORS[sheets[current]?.status]?.label || "Empty"}
                 {sheets[current]?.locked && " · Locked"}
               </div>
