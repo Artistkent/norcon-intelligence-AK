@@ -1,7 +1,7 @@
 // /api/auth — validate login code and return project state + user rights
 // POST { projectCode, memberCode }
 
-const UPSTASH_URL   = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_URL   = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const UPSTASH_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
 async function redisGet(key) {
