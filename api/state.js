@@ -2,8 +2,8 @@
 // GET  ?code=WF          → load project state
 // POST { code, state }   → save project state
 
-const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL;
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const UPSTASH_URL   = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
 async function redis(command) {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) {
