@@ -104,13 +104,15 @@ function OverallScore({ scores }) {
   );
 }
 
-function DimCard({ dimId, score, checks, evidence }) {
-  const [expanded, setExpanded] = useState(false);
-  const meta = DIM_META[dimId];
-  const sl   = score !== null && score !== undefined ? scoreLabel(score) : null;
-  const pct  = score !== null && score !== undefined ? (score/5)*100 : 0;
-  const dimEvidence = evidence.filter(e=>e.dimId===dimId);
-  const isGov = dimId === "governance";
+function DimCard({ dimId, score, checks, evidence, selectedAreas }) {
+  // selectedAreas = what PM chose in Sheet10; evidence = actual collected data
+  const meta         = DIM_META[dimId];
+  const sl           = score !== null && score !== undefined ? scoreLabel(score) : null;
+  const pct          = score !== null && score !== undefined ? (score/5)*100 : 0;
+  const dimEvidence  = evidence.filter(e=>e.dimId===dimId);
+  const isGov        = dimId === "governance";
+  // Use PM-selected areas; fall back to generic list if none selected
+  const areasToShow  = (selectedAreas && selectedAreas.length > 0) ? selectedAreas : meta.areas;
 
   return (
     <div style={{ background:C.surface, border:`1px solid ${score!==null&&score!==undefined?meta.color+"44":C.border}`, borderRadius:8, padding:"14px 16px" }}>
@@ -121,13 +123,12 @@ function DimCard({ dimId, score, checks, evidence }) {
           <div style={{ fontSize:13, fontWeight:700, color:meta.color }}>{meta.label}</div>
           <div style={{ fontSize:10, color:C.muted }}>Weight: {meta.weight*100}%</div>
         </div>
-        {sl && (
+        {sl ? (
           <div style={{ textAlign:"right" }}>
             <div style={{ fontSize:22, fontWeight:700, color:sl.color }}>{score?.toFixed(1)}</div>
             <div style={{ fontSize:9, color:sl.color }}>{sl.label}</div>
           </div>
-        )}
-        {(!sl) && <div style={{ fontSize:11, color:C.muted }}>No data yet</div>}
+        ) : <div style={{ fontSize:11, color:C.muted }}>No data yet</div>}
       </div>
 
       {/* Score bar */}
@@ -135,12 +136,7 @@ function DimCard({ dimId, score, checks, evidence }) {
         <div style={{ width:`${pct}%`, height:"100%", background:meta.color, borderRadius:3, transition:"width .5s ease" }}/>
       </div>
 
-      {/* Guidance */}
-      {!isGov && meta.guidance && (
-        <div style={{ fontSize:10, color:C.muted, lineHeight:1.5, marginBottom:8, fontStyle:"italic" }}>{meta.guidance}</div>
-      )}
-
-      {/* Governance checks — always shown */}
+      {/* Governance checks */}
       {isGov && checks && (
         <div style={{ marginTop:8 }}>
           <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".4px", marginBottom:6 }}>Auto-captured from system</div>
@@ -148,47 +144,64 @@ function DimCard({ dimId, score, checks, evidence }) {
             const isNA = c.pass === null || c.pass === undefined;
             return (
               <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3, fontSize:11 }}>
-                <span style={{ color: isNA ? C.muted : c.pass ? C.activity : C.risk, fontSize:10 }}>
-                  {isNA ? "—" : c.pass ? "✓" : "✕"}
-                </span>
-                <span style={{ color: isNA ? C.muted+"99" : c.pass ? C.dim : C.muted }}>{c.label}</span>
-                {isNA && <span style={{ fontSize:9, color:C.muted, fontStyle:"italic" }}>(N/A — no changes logged)</span>}
+                <span style={{ color: isNA?C.muted:c.pass?C.activity:C.risk, fontSize:10 }}>{isNA?"—":c.pass?"✓":"✕"}</span>
+                <span style={{ color: isNA?C.muted+"99":c.pass?C.dim:C.muted }}>{c.label}</span>
+                {isNA && <span style={{ fontSize:9, color:C.muted, fontStyle:"italic" }}>(N/A)</span>}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Non-governance: areas + evidence */}
-      {!isGov && meta.areas.length > 0 && (
-        <div style={{ marginTop:8 }}>
-          <button onClick={()=>setExpanded(e=>!e)} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:5, color:C.dim, fontSize:10, cursor:"pointer", padding:"3px 8px", marginBottom:6 }}>
-            {expanded ? "▲ Hide areas" : "▼ Show coverage areas"}
-          </button>
-          {expanded && (
-            <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:8 }}>
-              {meta.areas.map(area => {
-                const covered = dimEvidence.some(e=>e.area===area);
-                return (
-                  <span key={area} style={{ fontSize:9, padding:"2px 7px", borderRadius:12, background:covered?meta.color+"22":C.surface2, color:covered?meta.color:C.muted, border:`1px solid ${covered?meta.color+"44":C.border}` }}>
-                    {covered?"✓ ":""}{area}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Evidence count */}
+      {/* Non-governance: PM-selected focus areas with per-area evidence */}
       {!isGov && (
-        <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>
-          {dimEvidence.length} evidence point{dimEvidence.length!==1?"s":""} recorded
-          {dimEvidence.length > 0 && (
-            <span style={{ marginLeft:8 }}>
-              · {dimEvidence.filter(e=>e.answer==="yes").length} yes · {dimEvidence.filter(e=>e.answer==="partially").length} partial · {dimEvidence.filter(e=>e.answer==="no").length} no
-            </span>
+        <div style={{ marginTop:8 }}>
+          <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".4px", marginBottom:8 }}>
+            Focus Areas {areasToShow.length > 0 ? `(${areasToShow.length} configured)` : ""}
+          </div>
+          {areasToShow.length === 0 && (
+            <div style={{ fontSize:11, color:C.muted, fontStyle:"italic" }}>No focus areas selected in setup.</div>
           )}
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {areasToShow.map(area => {
+              const areaEvidence = dimEvidence.filter(e=>e.area===area);
+              const yesCount     = areaEvidence.filter(e=>e.answer==="yes").length;
+              const partCount    = areaEvidence.filter(e=>e.answer==="partially").length;
+              const noCount      = areaEvidence.filter(e=>e.answer==="no").length;
+              const total        = areaEvidence.length;
+              const areaScore    = total > 0 ? ((yesCount*1.0 + partCount*0.5)/total*100) : null;
+              const col          = areaScore===null?C.muted:areaScore>=80?C.activity:areaScore>=50?C.milestone:C.risk;
+              return (
+                <div key={area} style={{ background:C.surface2, borderRadius:6, padding:"8px 10px", borderLeft:`3px solid ${areaEvidence.length>0?col:C.border}` }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ fontSize:11, color:C.sage, flex:1, fontWeight:500 }}>{area}</span>
+                    {total > 0 ? (
+                      <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+                        {yesCount>0 && <span style={{ fontSize:9, color:C.activity, fontWeight:700 }}>✓{yesCount}</span>}
+                        {partCount>0 && <span style={{ fontSize:9, color:C.milestone, fontWeight:700 }}>⚬{partCount}</span>}
+                        {noCount>0 && <span style={{ fontSize:9, color:C.risk, fontWeight:700 }}>✕{noCount}</span>}
+                        <span style={{ fontSize:9, color:col, fontWeight:700, marginLeft:4 }}>{areaScore?.toFixed(0)}%</span>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize:9, color:C.muted, fontStyle:"italic" }}>No evidence yet</span>
+                    )}
+                  </div>
+                  {/* Mini progress bar for area */}
+                  {total > 0 && (
+                    <div style={{ height:3, background:C.border, borderRadius:2, marginTop:5, overflow:"hidden" }}>
+                      <div style={{ width:`${areaScore}%`, height:"100%", background:col, transition:"width .5s" }}/>
+                    </div>
+                  )}
+                  {/* Last evidence note */}
+                  {areaEvidence.length > 0 && (
+                    <div style={{ fontSize:9, color:C.muted, marginTop:4 }}>
+                      Last: {areaEvidence[areaEvidence.length-1]?.activityName} · {areaEvidence[areaEvidence.length-1]?.date}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -246,7 +259,8 @@ export default function L3Sustainability({ state, sustainData }) {
           <DimCard key={dimId} dimId={dimId}
             score={dimScores[dimId]??null}
             checks={dimId==="governance" ? govResult.checks : null}
-            evidence={evidence}/>
+            evidence={evidence}
+            selectedAreas={sustainConfig?.selected?.[dimId] || []}/>
         ))}
       </div>
 

@@ -91,21 +91,27 @@ export default function Sheet06Change({ data, locked, loginCodes, allSheets, onU
       </div>
 
       {activeTab==="approvers" && (() => {
-        // All PM roles to display
-        const ALL_PM_ROLES = [
-          "Project Sponsor","Project Director","Programme Manager","Portfolio Manager",
-          "Project Manager","Deputy Project Manager","Risk Manager","Change Manager",
-          "Quality Manager","Project Support","PMO Analyst",
-        ];
-        // Build role rows: each row = { role, reviewer: bool, approver: bool }
-        const roleRows = ALL_PM_ROLES.map(role => {
-          const match = effectiveApprovers.find(a=>a.role===role);
+        // Only show roles that the PM has added in Sheet 02 (team members + sponsor)
+        const teamRolesList = [
+          ...teamMembers.map(m => ({ role: m.role, name: m.name, loginCode: m.loginCode })),
+          ...(charter?.projectSponsor ? [{ role:"Project Sponsor", name: charter.projectSponsor, loginCode:"SPONSOR" }] : []),
+        ].filter(r=>r.role);
+        // De-duplicate by role
+        const seenRoles = new Set();
+        const uniqueTeamRoles = teamRolesList.filter(r => {
+          if(seenRoles.has(r.role)) return false;
+          seenRoles.add(r.role);
+          return true;
+        });
+        // Build role rows from actual team
+        const roleRows = uniqueTeamRoles.map(t => {
+          const match = effectiveApprovers.find(a=>a.role===t.role||a.loginCode===t.loginCode);
           return {
-            role,
-            name: match?.name || "",
+            role: t.role,
+            name: t.name || match?.name || "",
             reviewer: !!(match?.rights||[]).includes("reviewer"),
             approver: !!(match?.rights||[]).includes("approver"),
-            loginCode: match?.loginCode || "",
+            loginCode: t.loginCode || match?.loginCode || "",
           };
         });
         const toggleRoleRight = (role, right) => {

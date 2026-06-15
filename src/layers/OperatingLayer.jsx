@@ -35,8 +35,8 @@ const TABS = [
 // ── Leave-page save popup ─────────────────────────────────────────────────
 function LeavePopup({ onLogCCR, onMinor, onDiscard, onCancel, tabLabel }) {
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:24, maxWidth:420, width:"90%", boxShadow:"0 8px 32px #0008" }}>
+    <div onClick={onCancel} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:24, maxWidth:420, width:"90%", boxShadow:"0 8px 32px #0008" }}>
         <div style={{ fontSize:14, fontWeight:700, color:C.sage, marginBottom:6 }}>Unsaved changes</div>
         <div style={{ fontSize:12, color:C.muted, marginBottom:20, lineHeight:1.6 }}>
           You've made changes on <strong style={{ color:C.dim }}>{tabLabel}</strong> that haven't been logged. What would you like to do?
@@ -411,7 +411,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
       </div>
 
       {/* Content */}
-      <div style={{ flex:1, overflow:"auto" }}>
+      <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {activeTab === "change" ? (
           <L3ChangeControl
             changes={changes}

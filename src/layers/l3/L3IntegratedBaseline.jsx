@@ -205,10 +205,10 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
   const frozenHead = { position:"sticky", left:0, zIndex:3, background:C.surface2 };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, overflow:"hidden" }}>
 
       {/* ── Gantt Table ─────────────────────────────────────────────── */}
-      <div style={{ flex:"1 1 0", overflow:"auto", position:"relative" }} ref={ganttScrollRef}>
+      <div style={{ flex:"1 1 0", minHeight:0, overflow:"auto", position:"relative" }} ref={ganttScrollRef}>
         <table style={{ borderCollapse:"collapse", width:"100%", minWidth: COL_TOTAL_FROZEN + ganttWidth }}>
           <thead>
             <tr>
@@ -306,7 +306,7 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
       </div>
 
       {/* ── Cost Section ─────────────────────────────────────────────── */}
-      <div style={{ borderTop:`2px solid ${C.border}`, padding:"16px 16px 0", background:C.surface }}>
+      <div style={{ borderTop:`2px solid ${C.border}`, padding:"16px 16px 8px", background:C.surface, overflowY:"auto", maxHeight:"55%", flexShrink:0 }}>
         <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:12 }}>Cost Overview</div>
 
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
