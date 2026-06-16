@@ -62,7 +62,7 @@ export default function L3Dashboard({ state, activities, milestones, risks, deli
   const costVariance = totalPlanned - totalActual;
   const hasCostData  = totalPlanned > 0 || totalActual > 0;
 
-  // ── Cost chart — planned spread across time vs actual expenditure ─────
+  // ── Cost chart — both lines anchored to the Gantt timeline ────────────
   const renderCostChart = () => {
     if (!hasCostData) return (
       <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", padding:8 }}>
@@ -70,42 +70,35 @@ export default function L3Dashboard({ state, activities, milestones, risks, deli
       </div>
     );
 
-    // Per-activity planned points ordered by target date
-    const datedItems = [...activities, ...milestones]
-      .filter(i => costData[i._id]?.plannedAmount && (i.targetDate || i.startDate))
-      .map(i => ({ date: i.targetDate || i.startDate, v: parseFloat(costData[i._id].plannedAmount) || 0 }))
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    // Build a lookup: activityId → sum of all expenditure log entries for that activity
+    const actualByActivity = {};
+    expLog.forEach(e => {
+      if (!e.activityId || !e.amount) return;
+      actualByActivity[e.activityId] = (actualByActivity[e.activityId] || 0) + (parseFloat(e.amount) || 0);
+    });
 
-    // Actual expenditure points
-    const actPts = expLog
-      .filter(e => e.amount && e.date)
-      .map(e => ({ date: e.date, v: parseFloat(e.amount) || 0 }))
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    // All Gantt items with dates — the shared timeline both lines will use
+    const ganttItems = [...activities, ...milestones]
+      .filter(i => i.targetDate || i.startDate)
+      .sort((a, b) => new Date(a.targetDate || a.startDate) - new Date(b.targetDate || b.startDate));
 
-    // Cumulative actual
+    // Planned line: per-activity planned cost plotted at its Gantt date
+    const datedPlanned = ganttItems
+      .filter(i => costData[i._id]?.plannedAmount)
+      .map(i => ({ date: i.targetDate || i.startDate, v: parseFloat(costData[i._id].plannedAmount) || 0 }));
+
+    // Actual line: per-activity actual cost (sum of expLog entries by activityId) plotted at its Gantt date
+    const datedActual = ganttItems
+      .filter(i => actualByActivity[i._id] > 0)
+      .map(i => ({ date: i.targetDate || i.startDate, v: actualByActivity[i._id] }));
+
+    // Cumulative planned
+    let cumP = 0;
+    const planLine = datedPlanned.map(p => ({ date: p.date, v: (cumP += p.v) }));
+
+    // Cumulative actual — anchored to the same Gantt timeline
     let cumA = 0;
-    const actLine = actPts.map(p => ({ date: p.date, v: (cumA += p.v) }));
-
-    // Cumulative planned — use activity dates if available, else S-curve across project span
-    let planLine = [];
-    if (datedItems.length >= 2) {
-      let cumP = 0;
-      planLine = datedItems.map(p => ({ date: p.date, v: (cumP += p.v) }));
-    } else if (totalPlanned > 0) {
-      // Build a smooth S-curve across the date span we can infer
-      const allDates = [
-        ...activities.map(a => a.startDate || a.targetDate),
-        ...milestones.map(m => m.startDate || m.targetDate),
-        ...actLine.map(p => p.date),
-      ].filter(Boolean).sort();
-      const lineStart = allDates.length ? new Date(allDates[0]) : new Date();
-      const lineEnd   = allDates.length > 1 ? new Date(allDates[allDates.length-1]) : new Date(lineStart.getTime() + 90*86400000);
-      // 6-point S-curve: slow start, steep middle, tailing off
-      [[0,0],[0.15,0.05],[0.35,0.2],[0.55,0.5],[0.75,0.8],[0.9,0.95],[1,1]].forEach(([tPct, vPct]) => {
-        const d = new Date(lineStart.getTime() + tPct * (lineEnd - lineStart));
-        planLine.push({ date: d.toISOString().slice(0,10), v: vPct * totalPlanned });
-      });
-    }
+    const actLine = datedActual.map(p => ({ date: p.date, v: (cumA += p.v) }));
 
     if (!planLine.length && !actLine.length) return (
       <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", padding:8 }}>
