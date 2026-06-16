@@ -39,7 +39,7 @@ function autoDate(items) {
   });
   let cur = addDays(new Date(), 1);
   return sorted.map(item => {
-    if (item._autoDate === false && item.startDate) return item;
+    if (item._autoDate === false && (item.startDate || item.targetDate)) return item;
     const s = new Date(cur);
     const dur = item.itemType === "milestone" ? 0 : 13;
     const e = addDays(s, dur);
