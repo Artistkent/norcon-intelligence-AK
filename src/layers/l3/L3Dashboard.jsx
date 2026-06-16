@@ -117,16 +117,33 @@ export default function L3Dashboard({ state, activities, milestones, risks, deli
     const allMs = [...planLine, ...actLine].map(p => new Date(p.date).getTime()).filter(n => !isNaN(n));
     const minMs = Math.min(...allMs);
     const maxMs = Math.max(...allMs);
-    const span  = Math.max(maxMs - minMs, 86400000);
-    const maxV  = Math.max(...planLine.map(p=>p.v), ...actLine.map(p=>p.v), 1);
+    const span  = Math.max(maxMs - minMs, 30 * 86400000); // min 30-day span
 
-    const X1 = 40, X2 = 282, Y1 = 20, Y2 = 118;
+    // Y ceiling: 20% above the higher of planned/actual so lines have breathing room
+    const dataMax = Math.max(...planLine.map(p=>p.v), ...actLine.map(p=>p.v), 1);
+    const maxV    = dataMax * 1.2;
+
+    const X1 = 40, X2 = 282, Y1 = 18, Y2 = 118;
     const xOf = d => X1 + ((new Date(d).getTime() - minMs) / span) * (X2 - X1);
-    const yOf = v => Y2  - (v / maxV) * (Y2 - Y1);
-    const fmtTick = ms => new Date(ms).toLocaleDateString("en-GB", { day:"2-digit", month:"short" });
+    const yOf = v => Y2  - Math.min(1, v / maxV) * (Y2 - Y1);
+    const fmtTick = ms => new Date(ms).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"2-digit" });
 
-    const planPath = planLine.map((p,i) => `${i===0?"M":"L"}${xOf(p.date).toFixed(1)},${yOf(p.v).toFixed(1)}`).join(" ");
-    const actPath  = actLine.map((p,i)  => `${i===0?"M":"L"}${xOf(p.date).toFixed(1)},${yOf(p.v).toFixed(1)}`).join(" ");
+    // Anchor both lines to zero at the start date so they rise from the x-axis
+    const zeroPoint = { date: new Date(minMs).toISOString().slice(0,10), v: 0 };
+    const planPathPts = [zeroPoint, ...planLine];
+    const actPathPts  = [zeroPoint, ...actLine];
+
+    const planPath = planPathPts.map((p,i) => `${i===0?"M":"L"}${xOf(p.date).toFixed(1)},${yOf(p.v).toFixed(1)}`).join(" ");
+    const actPath  = actPathPts.map((p,i)  => `${i===0?"M":"L"}${xOf(p.date).toFixed(1)},${yOf(p.v).toFixed(1)}`).join(" ");
+
+    // Monthly x-axis ticks
+    const monthTicks = [];
+    const tickStart = new Date(minMs);
+    tickStart.setDate(1); tickStart.setMonth(tickStart.getMonth()+1);
+    while (tickStart.getTime() < maxMs) {
+      monthTicks.push(new Date(tickStart));
+      tickStart.setMonth(tickStart.getMonth()+1);
+    }
 
     return (
       <svg width="100%" height="155" viewBox="0 0 300 155" style={{ display:"block" }}>
@@ -134,29 +151,46 @@ export default function L3Dashboard({ state, activities, milestones, risks, deli
         <line x1={X1} y1={Y2} x2={X2} y2={Y2} stroke={C.border} strokeWidth="1"/>
         <line x1={X1} y1={Y1} x2={X1} y2={Y2} stroke={C.border} strokeWidth="1"/>
         {/* Y axis labels */}
-        <text x="2" y={Y1+6} fill={C.muted} fontSize="7">£{maxV.toLocaleString()}</text>
+        <text x="2" y={Y1+6} fill={C.muted} fontSize="7">£{Math.round(dataMax).toLocaleString()}</text>
         <text x="2" y={Y2}   fill={C.muted} fontSize="7">£0</text>
-        {/* X axis date labels */}
+        {/* Horizontal grid lines at 25/50/75% of dataMax */}
+        {[0.25,0.5,0.75].map(pct => (
+          <g key={pct}>
+            <line x1={X1} y1={yOf(dataMax*pct).toFixed(0)} x2={X2} y2={yOf(dataMax*pct).toFixed(0)}
+              stroke={C.border} strokeWidth="1" opacity="0.3" strokeDasharray="3 3"/>
+            <text x="2" y={(yOf(dataMax*pct)+3).toFixed(0)} fill={C.muted} fontSize="6">
+              £{Math.round(dataMax*pct).toLocaleString()}
+            </text>
+          </g>
+        ))}
+        {/* X axis: start, monthly ticks, end */}
         <text x={X1}  y="132" fill={C.muted} fontSize="7" textAnchor="middle">{fmtTick(minMs)}</text>
         <text x={X2}  y="132" fill={C.muted} fontSize="7" textAnchor="middle">{fmtTick(maxMs)}</text>
-        {/* Horizontal grid lines */}
-        {[0.25,0.5,0.75].map(pct => (
-          <line key={pct} x1={X1} y1={yOf(maxV*pct).toFixed(0)} x2={X2} y2={yOf(maxV*pct).toFixed(0)}
-            stroke={C.border} strokeWidth="1" opacity="0.35" strokeDasharray="3 3"/>
-        ))}
-        {/* Planned line (dashed) */}
-        {planPath && <path d={planPath} stroke={C.accentL} fill="none" strokeWidth="2" strokeDasharray="5 3"/>}
-        {/* Actual line (solid) */}
+        {monthTicks.map((m,i) => {
+          const mx = xOf(m.toISOString().slice(0,10));
+          if (mx <= X1+10 || mx >= X2-10) return null;
+          return (
+            <g key={i}>
+              <line x1={mx.toFixed(1)} y1={Y2} x2={mx.toFixed(1)} y2={Y2+4} stroke={C.border} strokeWidth="1"/>
+              <text x={mx.toFixed(1)} y="132" fill={C.muted} fontSize="6" textAnchor="middle">
+                {m.toLocaleDateString("en-GB",{month:"short"})}
+              </text>
+            </g>
+          );
+        })}
+        {/* Planned line (dashed) — rises from zero */}
+        {planPath && <path d={planPath} stroke={C.accentL} fill="none" strokeWidth="2" strokeDasharray="6 3"/>}
+        {/* Actual line (solid) — rises from zero */}
         {actPath  && <path d={actPath}  stroke={C.milestone} fill="none" strokeWidth="2.5"/>}
         {/* Dots on actual data points */}
         {actLine.map((p,i) => (
           <circle key={i} cx={xOf(p.date).toFixed(1)} cy={yOf(p.v).toFixed(1)} r="3" fill={C.milestone} stroke={C.surface} strokeWidth="1"/>
         ))}
         {/* Legend */}
-        <line x1="150" y1="147" x2="166" y2="147" stroke={C.accentL} strokeWidth="2" strokeDasharray="5 3"/>
-        <text x="169" y="150" fill={C.accentL} fontSize="8">Planned</text>
-        <line x1="215" y1="147" x2="231" y2="147" stroke={C.milestone} strokeWidth="2.5"/>
-        <text x="234" y="150" fill={C.milestone} fontSize="8">Actual</text>
+        <line x1="150" y1="148" x2="166" y2="148" stroke={C.accentL} strokeWidth="2" strokeDasharray="6 3"/>
+        <text x="169" y="151" fill={C.accentL} fontSize="8">Planned</text>
+        <line x1="215" y1="148" x2="231" y2="148" stroke={C.milestone} strokeWidth="2.5"/>
+        <text x="234" y="151" fill={C.milestone} fontSize="8">Actual</text>
       </svg>
     );
   };
