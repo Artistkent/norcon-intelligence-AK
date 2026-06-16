@@ -13,7 +13,7 @@ const PHASE_COLORS = {
   "Monitoring & Control":"#e0a23a", Closure:"#8aac96",
 };
 
-const ROW_H = 38;  // px per data row
+const ROW_H = 46;  // px per data row — enough for two stacked date inputs
 const DAY_W = 20;  // px per day in Gantt
 
 function dBetween(a, b) {
@@ -304,10 +304,10 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
   const TH = { background:C.surface2, fontSize:9, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".4px", padding:"0 8px", whiteSpace:"nowrap" };
 
   // Column widths for the frozen left table
-  const W_NAME = 180;
-  const W_DATE = 170; // start + end dates side by side
-  const W_PLAN = 72;
-  const W_ACT  = 72;
+  const W_NAME = 160;
+  const W_DATE = 130; // stacked start / end dates
+  const W_PLAN = 76;
+  const W_ACT  = 76;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, overflow:"hidden" }}>
@@ -323,10 +323,9 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
           {/* Header row */}
           <div style={{ display:"flex", height:44, flexShrink:0, alignItems:"center", borderBottom:`2px solid ${C.border}` }}>
             <div style={{ ...TH, width:W_NAME, borderRight:`1px solid ${C.border}` }}>Activity / Milestone</div>
-            <div style={{ ...TH, width:W_DATE, borderRight:`1px solid ${C.border}`, display:"flex", gap:0 }}>
-              <span style={{ flex:1, textAlign:"center" }}>Start</span>
-              <span style={{ width:1, background:C.border }}/>
-              <span style={{ flex:1, textAlign:"center" }}>End</span>
+            <div style={{ ...TH, width:W_DATE, borderRight:`1px solid ${C.border}`, flexDirection:"column", justifyContent:"center", gap:1 }}>
+              <span style={{ fontSize:8, color:C.muted }}>START</span>
+              <span style={{ fontSize:8, color:C.muted }}>END</span>
             </div>
             <div style={{ ...TH, width:W_PLAN, textAlign:"right", borderRight:`1px solid ${C.border}` }}>Plan £</div>
             <div style={{ ...TH, width:W_ACT,  textAlign:"right" }}>Act £</div>
@@ -362,28 +361,24 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
                         </div>
 
                         {/* Dates — editable */}
-                        <div style={{ width:W_DATE, display:"flex", alignItems:"center", borderRight:`1px solid ${C.border}22`, flexShrink:0, gap:2, padding:"0 4px" }}>
+                        <div style={{ width:W_DATE, display:"flex", flexDirection:"column", justifyContent:"center", borderRight:`1px solid ${C.border}22`, flexShrink:0, padding:"2px 4px", gap:2 }}>
                           <input
                             type="date"
                             value={item.startDate || ""}
                             disabled={!canEdit}
-                            style={{ ...dateInp, flex:1 }}
+                            style={{ ...dateInp, width:"100%", fontSize:10 }}
                             onChange={e => updateItemDate(item._id, item.itemType, "startDate", e.target.value)}
                           />
-                          {!isMile && (
-                            <>
-                              <span style={{ color:C.muted, fontSize:9, flexShrink:0 }}>→</span>
-                              <input
-                                type="date"
-                                value={item.targetDate || ""}
-                                disabled={!canEdit}
-                                style={{ ...dateInp, flex:1 }}
-                                onChange={e => updateItemDate(item._id, item.itemType, "targetDate", e.target.value)}
-                              />
-                            </>
-                          )}
-                          {isMile && (
-                            <span style={{ fontSize:9, color:C.muted, flex:1, paddingLeft:4 }}>{fmtD(item.startDate)}</span>
+                          {!isMile ? (
+                            <input
+                              type="date"
+                              value={item.targetDate || ""}
+                              disabled={!canEdit}
+                              style={{ ...dateInp, width:"100%", fontSize:10 }}
+                              onChange={e => updateItemDate(item._id, item.itemType, "targetDate", e.target.value)}
+                            />
+                          ) : (
+                            <span style={{ fontSize:9, color:C.muted, paddingLeft:2 }}>milestone</span>
                           )}
                         </div>
 
