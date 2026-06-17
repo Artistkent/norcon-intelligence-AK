@@ -77,25 +77,87 @@ export default function App() {
     setState(prev => ({ ...prev, activeLayer:"L2", l1:{...prev.l1, complete:false}, l2:{...prev.l2, currentSheet:"setup"} }));
   }, []);
 
-  const handleL1Complete = useCallback((charter, elements) => {
-    setExtStatus("done");
-    setExtMsg("✓ Extraction complete — registers populated");
+  const handleL1Complete = useCallback((charter, elements, team = []) => {
+    const acts  = elements.filter(e => e.type === "activity");
+    const miles = elements.filter(e => e.type === "milestone");
+    const risks = elements.filter(e => e.type === "risk");
+    const dels  = elements.filter(e => e.type === "deliverable");
+    const shs   = elements.filter(e => e.type === "stakeholder");
+
+    // Map team members extracted by L1 into Sheet 02 format
+    const teamMembers = team.map((t, i) => ({
+      _id:      t._id  || `TM-${String(i+1).padStart(3,"0")}`,
+      name:     t.name || "",
+      role:     t.role || "",
+      email:    t.email || "",
+      loginCode:"",
+      rights:   [],
+    }));
+
+    // Map stakeholders into Sheet 08 format
+    const stakeholders = shs.map(s => ({
+      _id:                s._id               || s.id,
+      name:               s.name              || s.description || "",
+      organisation:       s.organisation      || "",
+      role:               s.role              || "",
+      category:           s.category          || "",
+      power:              s.power             || "",
+      interest:           s.interest          || "",
+      influence:          s.influence         || "",
+      ease:               s.ease              || "",
+      engagementStrategy: s.engagementStrategy|| "",
+      _suggestedOwner:    s._suggestedOwner   || "",
+      _governanceTier:    s._governanceTier   || "",
+      source:             s.source            || "",
+    }));
+
+    // Map risks into Sheet 05 format
+    const risks05 = risks.map(r => ({
+      _id:             r._id              || r.id,
+      name:            r.name             || r.description || "",
+      description:     r.description     || "",
+      cause:           r.cause            || "",
+      potentialImpact: r.potentialImpact  || "",
+      likelihood:      r.likelihood       || "1",
+      impact:          r.impact           || "1",
+      mitigation:      r.mitigation       || "",
+      response:        r.response         || "Reduce",
+      category:        r.category         || "",
+      owner:           r._suggestedOwner  || "",
+      _governanceTier: r._governanceTier  || "",
+      source:          r.source           || "",
+    }));
+
+    // Map deliverables into Sheet 07 format — kpis[] already structured by L1 handler
+    const deliverables07 = dels.map(d => ({
+      _id:              d._id             || d.id,
+      name:             d.name            || d.description || "",
+      linkedObjectiveId:"",
+      deadlineV1:       d.targetDate      || "",
+      notes:            d.description     || "",
+      kpis:             Array.isArray(d.kpis) ? d.kpis : [],
+      _suggestedOwner:  d._suggestedOwner || "",
+      phase:            d.phase           || "",
+      priority:         d.priority        || "",
+      source:           d.source          || "",
+    }));
+
     setState(prev => ({
       ...prev,
-      l1: { charter, elements, complete:true },
+      l1: { charter, elements, complete: true },
       l2: {
         ...prev.l2,
         sheets: {
           ...prev.l2.sheets,
-          "01": { status:"ai-draft", locked:false, data:{ charter } },
-          "03": { status: elements.filter(e=>e.type==="activity"||e.type==="milestone").length>0?"ai-draft":"empty", locked:false, data:{ activities:elements.filter(e=>e.type==="activity"), milestones:elements.filter(e=>e.type==="milestone") } },
-          "05": { status: elements.filter(e=>e.type==="risk").length>0?"ai-draft":"empty", locked:false, data:{ risks:elements.filter(e=>e.type==="risk") } },
-          "07": { status: elements.filter(e=>e.type==="deliverable").length>0?"ai-draft":"empty", locked:false, data:{ deliverables:elements.filter(e=>e.type==="deliverable") } },
-          "08": { status: elements.filter(e=>e.type==="stakeholder").length>0?"ai-draft":"empty", locked:false, data:{ stakeholders:elements.filter(e=>e.type==="stakeholder") } },
+          "01": { status: "ai-draft", locked: false, data: { charter } },
+          "02": { status: teamMembers.length > 0 ? "ai-draft" : "empty", locked: false, data: { teamMembers } },
+          "03": { status: acts.length + miles.length > 0 ? "ai-draft" : "empty", locked: false, data: { activities: acts, milestones: miles } },
+          "05": { status: risks05.length > 0 ? "ai-draft" : "empty", locked: false, data: { risks: risks05 } },
+          "07": { status: deliverables07.length > 0 ? "ai-draft" : "empty", locked: false, data: { deliverables: deliverables07 } },
+          "08": { status: stakeholders.length > 0 ? "ai-draft" : "empty", locked: false, data: { stakeholders } },
         },
       },
     }));
-    setTimeout(() => setExtMsg(""), 6000);
   }, []);
 
   const handleL1Error = useCallback((msg) => {

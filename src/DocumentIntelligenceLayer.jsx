@@ -296,53 +296,177 @@ export default function DocumentIntelligenceLayer({ onSendToPersonalisation, onS
     const hint   = docType !== "auto" ? "Document type: " + docType + ". " : "";
     const pn     = projName ? 'Project name: "' + projName + '". ' : "";
 
-    const schemaDesc = `{
+    const prompt =
+      "You are the Document Intelligence Engine for NorCon Projects — an expert project management AI.\n" +
+      (pn ? pn + "\n" : "") +
+      (hint ? hint + "\n" : "") +
+      `
+Your task is to analyse the project document and return a single valid JSON object. You operate in two modes simultaneously:
+
+MODE 1 — EXTRACTION: Pull every piece of project information explicitly or implicitly stated in the document.
+MODE 2 — RECOMMENDATION: Where standard project elements are logically expected but absent, generate them as recommendations based on project type, context, and best practice. Mark these with source: "Recommended — not in document".
+
+Return ONLY the JSON — no markdown, no backticks, no explanation, no text before or after.
+
+═══════════════════════════════════════════
+INTELLIGENCE RULES
+═══════════════════════════════════════════
+
+BENEFITS (most important — always populate):
+- Benefits are rarely labelled "benefit" in a brief. Find them in: purpose statements, problem statements, expected outcomes, strategic goals, success criteria, value propositions, "we aim to...", "this will result in...", "the project will improve...".
+- If no benefits are stated, DERIVE them from what the project is trying to achieve. Every project exists to create value — identify that value and name it as a benefit.
+- Minimum: produce at least 2 benefits per project, even if the document is sparse.
+- For each benefit, create at least one objective that must be achieved to realise it.
+- Benefit categories: Strategic | Operational | Financial | Stakeholder | Community | Environmental | Knowledge | Capability | Reputational | Social
+
+OBJECTIVES (always nested inside benefits):
+- Objectives are the "how" of each benefit — what must happen for the benefit to be realised.
+- Extract from: stated goals, deliverable descriptions, success criteria, milestones.
+- If not explicit, derive logically from the benefit. e.g. Benefit "Improve student employability" → Objective "Deliver mentorship programme to 100 students".
+
+DELIVERABLES + KPIs (cross-field derivation):
+- For every deliverable found or inferred, create at least one KPI measuring its completion or quality.
+- KPI name should be specific and measurable: not "success" but "number of students completing mentorship" or "% of workshops rated good or excellent".
+- If baseline is unknown, set it to "0" for new initiatives or leave empty for existing programmes.
+- Target should be a specific number or % derived from context (e.g. if brief mentions "200 participants", target = "200").
+
+RISKS (always recommend standard risks):
+- Extract all explicit risks.
+- Additionally recommend standard risks for this project type that are absent. Examples: digital projects → data protection, cybersecurity, user adoption. Community projects → volunteer attrition, venue availability. Construction → H&S, weather, supply chain.
+- Minimum 4 risks per project.
+
+STAKEHOLDERS:
+- Extract named individuals and organisations.
+- Infer obvious stakeholders not named: funders, end users, regulatory bodies, community groups — based on project context.
+- Assign power/interest/influence scores (1-10) based on their role and relationship to the project.
+
+ACTIVITIES + MILESTONES:
+- Extract all explicitly described tasks and events.
+- Infer a logical set of phase-based activities if not fully described (e.g. planning, procurement, delivery, review).
+- Every project should have at least one milestone per phase.
+
+TEAM:
+- Extract any named individuals with roles.
+- Infer expected roles if not named (e.g. "a Project Manager will be needed", "a Communications Lead is implied by the stakeholder engagement requirements").
+
+═══════════════════════════════════════════
+JSON SCHEMA
+═══════════════════════════════════════════
+
+{
   "charter": {
-    "projectName": null, "projectCode": null, "purpose": null, "problemStatement": null,
-    "strategicAlignment": null, "withinScope": [], "outOfScope": [],
-    "objectives": [{"objective":"","successCriterion":"","targetDate":null}],
-    "startDate": null, "endDate": null, "budget": null,
-    "projectManager": null, "projectSponsor": null, "organisation": null, "documentSummary": ""
+    "projectName": "string or null",
+    "projectCode": "short code 2-6 chars or null",
+    "projectManager": "name or null",
+    "projectSponsor": "name or null",
+    "organisation": "string or null",
+    "startDate": "YYYY-MM-DD or null",
+    "endDate": "YYYY-MM-DD or null",
+    "budget": "string e.g. £35,000 or null",
+    "purpose": "clear 1-3 sentence statement of project purpose",
+    "problemStatement": "what problem or need this project addresses",
+    "strategicAlignment": "which organisational or strategic goals this supports",
+    "withinScope": ["item 1", "item 2"],
+    "outOfScope": ["item 1"],
+    "documentSummary": "2-3 sentence overview of the document",
+    "benefits": [
+      {
+        "_id": "BEN-001",
+        "name": "benefit name — concise and value-focused",
+        "description": "the measurable improvement expected and how it will manifest",
+        "category": "Strategic|Operational|Financial|Stakeholder|Community|Environmental|Knowledge|Capability|Reputational|Social",
+        "owner": "role most responsible for ensuring this benefit is realised",
+        "targetDate": "YYYY-MM-DD or null",
+        "sustainmentPlan": "how the benefit will be evidenced and sustained after project closure",
+        "lessonsLearned": "",
+        "objectives": [
+          {
+            "_id": "OBJ-001",
+            "objective": "specific, actionable objective that contributes to realising the benefit",
+            "successCriterion": "how achievement of this objective will be measured",
+            "targetDate": "YYYY-MM-DD or null"
+          }
+        ]
+      }
+    ]
   },
+  "team": [
+    {
+      "_id": "TM-001",
+      "name": "person name or null if inferred",
+      "role": "project role title",
+      "email": "email or null"
+    }
+  ],
   "elements": [
     {
       "_id": "R-101",
       "_version": 1,
       "_status": "Draft",
-      "_suggestedOwner": "role name",
-      "_suggestedApprover": "role name",
-      "_governanceTier": "Tier 3 — Project Manager",
-      "type": "risk",
+      "_suggestedOwner": "most logically responsible role",
+      "_suggestedApprover": "role who approves changes to this",
+      "_governanceTier": "Tier 1 — Sponsor|Tier 2 — Mentor / Assessor|Tier 3 — Project Manager|Tier 4 — Project Team",
+      "type": "risk|stakeholder|deliverable|activity|milestone|issue|constraint",
       "name": "element name",
-      "source": "where found in document"
+      "source": "direct quote or section reference, OR Recommended — not in document",
+
+      "cause": "(risk only) root cause",
+      "potentialImpact": "(risk only) consequence if it occurs",
+      "likelihood": "(risk only) 1|2|3",
+      "impact": "(risk only) 1|2|3",
+      "mitigation": "(risk only) how to reduce probability or impact",
+      "response": "(risk only) Avoid|Reduce|Transfer|Accept|Exploit|Enhance|Share",
+      "category": "(risk only) e.g. Technical, Financial, People, External, Legal",
+
+      "organisation": "(stakeholder only)",
+      "role": "(stakeholder only) their role in relation to the project",
+      "power": "(stakeholder only) 1-10",
+      "interest": "(stakeholder only) 1-10",
+      "influence": "(stakeholder only) 1-10",
+      "ease": "(stakeholder only) 1-10",
+      "engagementStrategy": "(stakeholder only) how to engage",
+
+      "description": "(deliverable/activity/issue/constraint) detail",
+      "phase": "Concept|Definition|Development|Handover & Closeout|Execution",
+      "priority": "(deliverable/issue) high|medium|low",
+      "kpis": [
+        {
+          "_id": "D-001-KPI01",
+          "name": "specific measurable KPI",
+          "baseline": "starting value or 0 for new initiatives",
+          "target": "target value derived from document context",
+          "unit": "%, #, £, score",
+          "measurementFrequency": "Monthly|Weekly|Quarterly|Per Milestone|At Closure",
+          "dataSource": "where data will come from",
+          "owner": "who measures and reports this KPI"
+        }
+      ],
+
+      "responsible": "(activity only) role responsible",
+      "startDate": "(activity only) YYYY-MM-DD or null",
+      "targetDate": "(activity/milestone only) YYYY-MM-DD or null",
+
+      "constraintType": "(constraint only) Constraint|Assumption|Dependency",
+      "riskIfBreached": "(constraint only) consequence",
+      "owner": "(constraint only) responsible role"
     }
   ]
-}`;
+}
 
-    const typeFields = `Per element type, include these extra fields:
-- risk: cause, potentialImpact, likelihood ("1 - Low"|"2 - Medium"|"3 - High"), impact ("1 - Low"|"2 - Medium"|"3 - High"), mitigation, response (Avoid|Reduce|Transfer|Accept|Exploit|Enhance|Share), category
-- stakeholder: category, contact, power (1-10), interest (1-10), influence (1-10), ease (1-10), engagementStrategy
-- deliverable: description, phase, priority (high|medium|low)
-- activity: description, phase, responsible
-- milestone: description, targetDate, phase
-- issue: description, impact, priority (High|Medium|Low)
-- constraint: constraintType (Constraint|Assumption|Dependency), description, riskIfBreached, owner`;
+═══════════════════════════════════════════
+GOVERNANCE RULES
+═══════════════════════════════════════════
+- Tier 1 — Sponsor: scope, budget, strategic decisions, programme milestones
+- Tier 2 — Mentor / Assessor: assurance, quality gates, programme alignment
+- Tier 3 — Project Manager: risks, issues, change control, team management
+- Tier 4 — Project Team: tasks, sub-deliverables, day-to-day activities
 
-    const govRules = `Governance rules:
-- _suggestedOwner: most logically responsible role (e.g. "Project Manager", "Risk Owner", "Procurement Lead")
-- _suggestedApprover: role who approves changes (e.g. "Project Sponsor", "Project Manager")
-- _governanceTier: "Tier 1 — Sponsor" | "Tier 2 — Mentor / Assessor" | "Tier 3 — Project Manager" | "Tier 4 — Project Team"
-- Scope/budget/milestone = Tier 1. Risk/quality = Tier 3. Daily tasks = Tier 4.
-ID format: R-101,R-102... | I-101... | SH-001,SH-002... | D-001... | ACT-001... | MS-001... | CON-001...`;
+ID formats: BEN-001, OBJ-001, TM-001, R-101 (risks), SH-001 (stakeholders), D-001 (deliverables), ACT-001 (activities), MS-001 (milestones), I-101 (issues), CON-001 (constraints). Deliverable KPIs: D-001-KPI01.
+For activities/milestones with dates found in the document: include startDate/targetDate and set _autoDate to false.
+Remove all comment/instruction lines (lines starting with field name explanations in brackets) from your output — only output actual data fields.
 
-    const prompt = "You are the Document Intelligence Engine for NorCon Projects.\n" +
-      pn + hint + "\n\n" +
-      "Extract all project data and return ONLY valid JSON — no markdown, no backticks, no explanation.\n\n" +
-      "Schema:\n" + schemaDesc + "\n\n" +
-      typeFields + "\n\n" +
-      govRules + "\n\n" +
-      "Only extract what is genuinely present. Return [] for elements if none found.\n\n" +
-      "DOCUMENT:\n" + maxDoc;
+DOCUMENT:
+` + maxDoc;
 
     try {
       const res = await fetch("/api/extract", {

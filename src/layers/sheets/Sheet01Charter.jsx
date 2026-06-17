@@ -288,12 +288,6 @@ export default function Sheet01Charter({ data, locked, onUpdate }) {
         </button>
       )}
 
-      {/* Legacy migration notice */}
-      {c.objectives && c.objectives.length > 0 && (!c.benefits || c.benefits.length === 0) && (
-        <div style={{ padding:"10px 14px", background:"rgba(224,162,58,0.08)", border:`1px solid ${C.milestone}44`, borderRadius:6, fontSize:11, color:C.milestone, marginTop:8 }}>
-          ⚠️ This project has objectives from a previous version. Add benefits above and reassign your objectives within them. The old objectives will be preserved until you do.
-        </div>
-      )}
     </div>
   );
 }
