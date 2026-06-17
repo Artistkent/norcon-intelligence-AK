@@ -9,7 +9,7 @@ const DIMENSIONS = [
     areas:["Resource Use","Travel","Waste","Digital Delivery"],
   },
   {
-    id:"social", label:"Social", icon:"👥", color:"#3a9ce0",
+    id:"social", label:"Social", icon:"👥", color:"#5d8aff",
     desc:"Measures impact on people — accessibility, diversity, community benefit.",
     areas:["Accessibility","Diversity","Community Benefit","Wellbeing","Skills Development"],
   },
@@ -20,7 +20,7 @@ const DIMENSIONS = [
     autoCapture: true,
   },
   {
-    id:"legacy", label:"Legacy", icon:"🏛️", color:"#9c6ee0",
+    id:"legacy", label:"Legacy", icon:"🏛️", color:"#b87aff",
     desc:"Measures whether project outputs continue creating value beyond completion.",
     areas:["Knowledge Creation","Skills Transfer","Partnerships","Project Continuity"],
   },
