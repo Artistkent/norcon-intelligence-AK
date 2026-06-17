@@ -21,6 +21,29 @@ function blankObjective(arr) {
   return { _id: makeObjId(arr), objective:"", successCriterion:"", targetDate:"" };
 }
 
+function safeObjective(o) {
+  return {
+    _id:              o._id              || makeObjId([]),
+    objective:        o.objective        || "",
+    successCriterion: o.successCriterion || "",
+    targetDate:       o.targetDate       || "",
+  };
+}
+
+function safeBenefit(b, idx) {
+  return {
+    _id:             b._id             || `BEN-${String(idx+1).padStart(3,"0")}`,
+    name:            b.name            || "",
+    description:     b.description     || "",
+    category:        b.category        || "Strategic",
+    owner:           b.owner           || "",
+    targetDate:      b.targetDate      || "",
+    sustainmentPlan: b.sustainmentPlan || "",
+    lessonsLearned:  b.lessonsLearned  || "",
+    objectives:      (b.objectives     || []).map(safeObjective),
+  };
+}
+
 export default function Sheet01Charter({ data, locked, onUpdate }) {
   const c = data.charter || {};
 
@@ -42,8 +65,7 @@ export default function Sheet01Charter({ data, locked, onUpdate }) {
 
   // Benefits (with nested objectives) — migrate old flat objectives if benefits not yet defined
   const [benefits, setBenefits] = useState(() => {
-    if (c.benefits && c.benefits.length > 0) return c.benefits;
-    // Legacy migration: if old objectives exist, surface them as a prompt (empty benefits)
+    if (c.benefits && c.benefits.length > 0) return c.benefits.map(safeBenefit);
     return [];
   });
 
@@ -55,12 +77,6 @@ export default function Sheet01Charter({ data, locked, onUpdate }) {
         withinScope: nextForm.withinScope.split("\n").filter(Boolean),
         outOfScope:  nextForm.outOfScope.split("\n").filter(Boolean),
         benefits:    nextBenefits,
-        // Keep legacy objectives field populated for any component still reading it
-        objectives:  nextBenefits.flatMap(b => b.objectives.map(o => ({
-          objective: `[${b.name}] ${o.objective}`,
-          successCriterion: o.successCriterion,
-          targetDate: o.targetDate,
-        }))),
       },
     }, "in-progress");
   };
