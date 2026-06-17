@@ -192,23 +192,36 @@ export default function App() {
   // ── Layer 3 handlers ───────────────────────────────────────────────────
   const handleMarkComplete = useCallback((taskId, itemType, complete=true) => {
     setState(prev => {
-      const sheet   = "03";
+      const sheet     = "03";
       const sheetData = prev.l2.sheets[sheet]?.data || {};
+
+      // Update _complete flag on the activity or milestone
       const tryUpdate = (key) => {
         const items = sheetData[key] || [];
         const idx   = items.findIndex(a => a._id === taskId || a.taskId === taskId);
         if (idx === -1) return null;
         return items.map((a,i) => i === idx ? { ...a, _complete: complete } : a);
       };
-      const updatedActivities  = tryUpdate("activities");
-      const updatedMilestones  = tryUpdate("milestones");
+      const updatedActivities = tryUpdate("activities");
+      const updatedMilestones = tryUpdate("milestones");
       const newData = {
         ...sheetData,
-        ...(updatedActivities  ? { activities:  updatedActivities  } : {}),
-        ...(updatedMilestones  ? { milestones:  updatedMilestones  } : {}),
+        ...(updatedActivities ? { activities: updatedActivities } : {}),
+        ...(updatedMilestones ? { milestones: updatedMilestones } : {}),
       };
+
+      // When undoing (complete=false), remove all sustainability evidence for this task
+      const prevEvidence = prev.sustainData?.evidence || [];
+      const newEvidence  = complete
+        ? prevEvidence
+        : prevEvidence.filter(e => e.activityId !== taskId);
+
       return {
         ...prev,
+        sustainData: {
+          ...(prev.sustainData || {}),
+          evidence: newEvidence,
+        },
         l2: {
           ...prev.l2,
           sheets: {
