@@ -9,6 +9,7 @@ import L3ChangeControl      from "./l3/L3ChangeControl.jsx";
 import CCRPopup             from "./l3/CCRPopup.jsx";
 import L3Sustainability      from "./l3/L3Sustainability.jsx";
 import L3Benefits            from "./l3/L3Benefits.jsx";
+import L3Risks              from "./l3/L3Risks.jsx";
 import SustainabilityPrompt  from "./l3/SustainabilityPrompt.jsx";
 import {
   isBaselineField, describeChange, generateCCRId, generateMinorId,
@@ -26,6 +27,7 @@ const TABS = [
   { id:"home",      label:"Home",                 icon:"🏠" },
   { id:"dashboard", label:"Dashboard",            icon:"📊" },
   { id:"tasks",     label:"Tasks",                icon:"✅" },
+  { id:"risks",     label:"Risks & Issues",        icon:"⚠️" },
   { id:"baseline",  label:"Integrated Baseline",  icon:"📅" },
   { id:"raci",      label:"RACI",                 icon:"📋" },
   { id:"change",    label:"Change Control",        icon:"🔄" },
@@ -80,6 +82,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
   const activities   = sheets["03"]?.data?.activities   || [];
   const milestones   = sheets["03"]?.data?.milestones   || [];
   const risks        = sheets["05"]?.data?.risks        || [];
+  const issues       = sheets["05"]?.data?.issues       || [];
   const deliverables = sheets["07"]?.data?.deliverables || [];
   const stakeholders = sheets["08"]?.data?.stakeholders || [];
   const teamMembers  = l2?.loginCodes                   || [];
@@ -306,7 +309,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
 
   const sharedProps = {
     state, member, project, sheets, charter,
-    activities, milestones, risks, deliverables, stakeholders,
+    activities, milestones, risks, issues, deliverables, stakeholders,
     teamMembers, raciData: autoRaci, isPM, loginCodes: teamMembers,
     onMarkComplete, onGoToL2, onStateChange,
     onBaselineBlur: handleBaselineBlur,
@@ -323,6 +326,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     raci:      L3RACI,
     report:    L3Report,
     change:    null,
+    risks:     L3Risks,
     benefits:  L3Benefits,
   }[activeTab];
 

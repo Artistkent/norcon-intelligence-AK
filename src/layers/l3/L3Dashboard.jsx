@@ -36,7 +36,7 @@ function parseDate(s) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-export default function L3Dashboard({ state, activities, milestones, risks, deliverables }) {
+export default function L3Dashboard({ state, activities, milestones, risks, issues, deliverables }) {
   const sheets   = state?.l2?.sheets || {};
   const changes  = sheets["06"]?.data?.changes       || [];
   const costData = sheets["03"]?.data?.costData       || {};
@@ -53,8 +53,10 @@ export default function L3Dashboard({ state, activities, milestones, risks, deli
   const msPct  = milestones.length > 0 ? Math.round((milestones.filter(m => m._complete).length / milestones.length) * 100) : 0;
   const delPct = deliverables.length > 0 ? Math.round((deliverables.filter(d => parseFloat(d.actual || 0) >= parseFloat(d.target || 1)).length / deliverables.length) * 100) : 0;
 
-  const redRisks = risks.filter(r => (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1) >= 9).length;
-  const ambRisks = risks.filter(r => { const s = (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1); return s >= 4 && s < 9; }).length;
+  const redRisks   = risks.filter(r => (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1) >= 9).length;
+  const ambRisks   = risks.filter(r => { const s = (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1); return s >= 4 && s < 9; }).length;
+  const issArr     = issues || [];
+  const openIssues = issArr.filter(i => i.status !== "Resolved").length;
 
   // ── Change log ────────────────────────────────────────────────────────────
   const majorChanges = changes.filter(c => c.type === "major");
@@ -123,7 +125,7 @@ export default function L3Dashboard({ state, activities, milestones, risks, deli
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
         <MetricCard label="Overall Progress" value={`${pct}%`}          sub={`${doneTasks} of ${allTasks.length} tasks`} color={pct >= 70 ? C.activity : pct >= 40 ? C.milestone : C.risk} />
         <MetricCard label="Overdue Tasks"    value={overdue}             sub="need attention"                              color={overdue > 0 ? C.risk : C.activity} />
-        <MetricCard label="Open Risks"       value={risks.length}        sub={`${redRisks} red · ${ambRisks} amber`}       color={redRisks > 0 ? C.risk : ambRisks > 0 ? C.milestone : C.activity} />
+        <MetricCard label="Risks & Issues"   value={`${risks.length} / ${openIssues}`} sub={`${redRisks} red · ${ambRisks} amber · ${openIssues} open issues`} color={redRisks > 0 ? C.risk : openIssues > 0 ? C.milestone : C.activity} />
         <MetricCard label="Next Milestone"   value={nextMs?.name || "None"} sub={nextMs?.targetDate || "No date set"}      color={C.milestone} />
       </div>
 

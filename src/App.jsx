@@ -128,6 +128,23 @@ export default function App() {
       source:          r.source           || "",
     }));
 
+    // Map issues into Sheet 05 format
+    const issues05 = elements.filter(e => e.type === "issue").map((iss, i) => ({
+      _id:                  iss._id    || `I-${String(101+i).padStart(3,"0")}`,
+      name:                 iss.name   || iss.description || "",
+      description:          iss.description || "",
+      cause:                iss.cause  || "",
+      impact:               iss.impact || iss.potentialImpact || "",
+      priority:             iss.priority || "Medium",
+      owner:                iss._suggestedOwner || "",
+      raisedDate:           "",
+      targetResolutionDate: "",
+      status:               "Open",
+      resolution:           "",
+      escalationPath:       "",
+      source:               iss.source || "",
+    }));
+
     // Map deliverables into Sheet 07 format — kpis[] already structured by L1 handler
     const deliverables07 = dels.map(d => ({
       _id:              d._id             || d.id,
@@ -152,7 +169,7 @@ export default function App() {
           "01": { status: "ai-draft", locked: false, data: { charter } },
           "02": { status: teamMembers.length > 0 ? "ai-draft" : "empty", locked: false, data: { teamMembers } },
           "03": { status: acts.length + miles.length > 0 ? "ai-draft" : "empty", locked: false, data: { activities: acts, milestones: miles } },
-          "05": { status: risks05.length > 0 ? "ai-draft" : "empty", locked: false, data: { risks: risks05 } },
+          "05": { status: risks05.length > 0 || issues05.length > 0 ? "ai-draft" : "empty", locked: false, data: { risks: risks05, issues: issues05 } },
           "07": { status: deliverables07.length > 0 ? "ai-draft" : "empty", locked: false, data: { deliverables: deliverables07 } },
           "08": { status: stakeholders.length > 0 ? "ai-draft" : "empty", locked: false, data: { stakeholders } },
         },
