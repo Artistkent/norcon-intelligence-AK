@@ -128,7 +128,8 @@ function SustainabilityModal({ activity, enabledDims, onRecord, onSkip }) {
     // Record one evidence entry per dimension
     const records = enabledDims.map(d => ({
       dimId:        d.id,
-      area:         d.label,
+      area:         d.areas.length > 0 ? d.areas[0] : d.label,
+      areas:        d.areas,
       question:     questions[d.id] || FALLBACK[d.id],
       answer:       answers[d.id],
       score:        SCORE[answers[d.id]] ?? 0,
