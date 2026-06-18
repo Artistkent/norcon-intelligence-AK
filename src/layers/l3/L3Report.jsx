@@ -78,14 +78,19 @@ function buildProjectContext(state, project, charter, activities, milestones, ri
 // ─────────────────────────────────────────────────────────────────────────────
 // Section card component
 // ─────────────────────────────────────────────────────────────────────────────
-function SectionCard({ title, icon, children }) {
+function SectionCard({ title, icon, children, flex, scrollable }) {
   return (
-    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:9, padding:"20px 24px", marginBottom:16 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, paddingBottom:10, borderBottom:`1px solid ${C.border}` }}>
-        <span style={{ fontSize:16 }}>{icon}</span>
-        <span style={{ fontSize:14, fontWeight:700, color:C.sage }}>{title}</span>
+    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:9, padding:"16px 20px",
+      flex: flex || "0 0 auto",
+      display:"flex", flexDirection:"column", minHeight:0, overflow:"hidden" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, paddingBottom:8,
+        borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+        <span style={{ fontSize:15 }}>{icon}</span>
+        <span style={{ fontSize:13, fontWeight:700, color:C.sage }}>{title}</span>
       </div>
-      {children}
+      <div style={{ flex:1, minHeight:0, overflowY: scrollable ? "auto" : "visible" }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -341,11 +346,11 @@ Write these sections in full:
   }
 
   return (
-    <div style={{ flex:1, overflowY:"auto", padding:20 }}>
-      <div style={{ maxWidth:800, margin:"0 auto" }}>
+    <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", padding:"12px 20px", gap:12, overflow:"hidden" }}>
+      <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, maxWidth:800, width:"100%", margin:"0 auto", gap:12 }}>
 
         {/* ══ CHANGE CONTROL ══ */}
-        <SectionCard title="Change Control" icon="🔄">
+        <SectionCard title="Change Control" icon="🔄" flex="2 1 0" scrollable={true}>
           {/* Summary bar */}
           <div style={{ display:"flex", gap:12, marginBottom:16, flexWrap:"wrap" }}>
             {[[pendingCCR,"Pending",C.milestone],[approvedCCR,"Approved",C.activity],[rejectedCCR,"Rejected",C.risk],[majorCCR.length,"Major CCRs",C.accentL],[minorCCR.length,"Minor Updates",C.muted]].map(([v,l,col])=>(
@@ -404,7 +409,7 @@ Write these sections in full:
         </SectionCard>
 
         {/* ══ PROJECT WORKBOOK ══ */}
-        <SectionCard title="Project Workbook" icon="📊">
+        <SectionCard title="Project Workbook" icon="📊" flex="1 1 0">
           <div style={{ fontSize:12, color:C.muted, marginBottom:16, lineHeight:1.6 }}>
             Fully styled Excel workbook with AI executive summary and 10 registers including benefits & KD tracker, issues, baseline comparison, and sustainability evidence.
           </div>
@@ -432,7 +437,7 @@ Write these sections in full:
         </SectionCard>
 
         {/* ══ PROJECT REPORT ══ */}
-        <SectionCard title="Project Report" icon="📄">
+        <SectionCard title="Project Report" icon="📄" flex="1 1 0">
           <div style={{ fontSize:12, color:C.muted, marginBottom:16, lineHeight:1.6 }}>
             A comprehensive narrative report written by Claude, covering all nine sections. Downloads as a properly formatted Word document (.docx) suitable for steering committee presentation or project closure.
           </div>
