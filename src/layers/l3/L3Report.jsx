@@ -88,7 +88,7 @@ function SectionCard({ title, icon, children, flex, scrollable }) {
         <span style={{ fontSize:15 }}>{icon}</span>
         <span style={{ fontSize:13, fontWeight:700, color:C.sage }}>{title}</span>
       </div>
-      <div style={{ flex:1, minHeight:0, overflowY: scrollable ? "auto" : "visible" }}>
+      <div style={{ flex: scrollable ? "1 1 0" : "none", minHeight: scrollable ? 0 : "auto", overflowY: scrollable ? "auto" : "visible" }}>
         {children}
       </div>
     </div>
@@ -350,7 +350,7 @@ Write these sections in full:
       <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, maxWidth:800, width:"100%", margin:"0 auto", gap:12 }}>
 
         {/* ══ CHANGE CONTROL ══ */}
-        <SectionCard title="Change Control" icon="🔄" flex="2 1 0" scrollable={true}>
+        <SectionCard title="Change Control" icon="🔄" flex="1 1 0" scrollable={true}>
           {/* Summary bar */}
           <div style={{ display:"flex", gap:12, marginBottom:16, flexWrap:"wrap" }}>
             {[[pendingCCR,"Pending",C.milestone],[approvedCCR,"Approved",C.activity],[rejectedCCR,"Rejected",C.risk],[majorCCR.length,"Major CCRs",C.accentL],[minorCCR.length,"Minor Updates",C.muted]].map(([v,l,col])=>(
@@ -371,7 +371,7 @@ Write these sections in full:
             const s   = (ccr.status||"pending").toLowerCase();
             const col = s==="approved"?C.activity:s==="rejected"?C.risk:s==="reviewed"?"#3a9ce0":C.milestone;
             return (
-              <div key={ccr.id||i} style={{ border:`1px solid ${C.border}`, borderLeft:`3px solid ${col}`, borderRadius:7, padding:"10px 12px", marginBottom:8, background:C.surface2 }}>
+              <div key={ccr.id||i} style={{ border:`1px solid ${C.border}`, borderLeft:`3px solid ${col}`, borderRadius:7, padding:"10px 12px", marginBottom:8, background:C.surface2, minWidth:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
                   <span style={{ fontFamily:"monospace", fontSize:11, color:C.accentL, fontWeight:700 }}>{ccr.id}</span>
                   <span style={{ fontSize:10, color:C.muted }}>{ccr.date}</span>
@@ -409,11 +409,11 @@ Write these sections in full:
         </SectionCard>
 
         {/* ══ PROJECT WORKBOOK ══ */}
-        <SectionCard title="Project Workbook" icon="📊" flex="1 1 0">
-          <div style={{ fontSize:12, color:C.muted, marginBottom:16, lineHeight:1.6 }}>
+        <SectionCard title="Project Workbook" icon="📊" flex="0 0 auto">
+          <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
             Fully styled Excel workbook with AI executive summary and 10 registers including benefits & KD tracker, issues, baseline comparison, and sustainability evidence.
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:6, marginBottom:16 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:4, marginBottom:12 }}>
             {[["00","Executive Summary","✨ AI"],["01","Charter + Benefits","✓"],["02","Team","✓"],["03","Schedule","✓"],["04","RACI","✓"],["05","Risk Register","✓"],["05b","Issues Register","✓"],["06","Change Control","✓"],["07","Benefits & KPIs","✓"],["08","Stakeholders","✓"],["09","Comms Plan","✓"],["10","Sustainability","✓"]].map(([n,l,badge])=>(
               <div key={n} style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", background:C.surface2, borderRadius:5, fontSize:11 }}>
                 <span style={{ fontFamily:"monospace", fontSize:9, color:C.accentL, width:24, flexShrink:0 }}>{n}</span>
@@ -437,14 +437,14 @@ Write these sections in full:
         </SectionCard>
 
         {/* ══ PROJECT REPORT ══ */}
-        <SectionCard title="Project Report" icon="📄" flex="1 1 0">
-          <div style={{ fontSize:12, color:C.muted, marginBottom:16, lineHeight:1.6 }}>
-            A comprehensive narrative report written by Claude, covering all nine sections. Downloads as a properly formatted Word document (.docx) suitable for steering committee presentation or project closure.
+        <SectionCard title="Project Report" icon="📄" flex="0 0 auto">
+          <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
+            A comprehensive narrative report written by Claude, covering all nine sections. Downloads as a properly formatted Word document (.docx) suitable for steering committees and project closure.
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:16 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:3, marginBottom:12 }}>
             {["1. Executive Summary","2. Project Overview","3. Progress Against Baseline","4. Benefits Realisation","5. Risks and Issues","6. Change History","7. Sustainability Performance","8. Lessons Learned","9. Recommendations & Next Steps"].map(s=>(
-              <div key={s} style={{ display:"flex", alignItems:"center", gap:6, fontSize:11 }}>
-                <span style={{ color:C.activity, fontSize:10 }}>✓</span>
+              <div key={s} style={{ display:"flex", alignItems:"center", gap:5, fontSize:10 }}>
+                <span style={{ color:C.activity, fontSize:9 }}>✓</span>
                 <span style={{ color:C.dim }}>{s}</span>
               </div>
             ))}
