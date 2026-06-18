@@ -13,6 +13,31 @@ export const INITIAL_STATE = {
     status: 'draft',   // 'draft' | 'active' | 'closed'
   },
 
+  // ── Baseline (frozen at project launch, never modified) ───────────────────
+  baseline: null,
+  // baseline shape when set:
+  // {
+  //   version:       1,
+  //   confirmedDate: 'YYYY-MM-DD',
+  //   confirmedBy:   'LOGIN-CODE',
+  //   snapshot: {
+  //     charter:     { ... },   // from sheets["01"].data.charter
+  //     activities:  [ ... ],   // from sheets["03"].data.activities
+  //     milestones:  [ ... ],   // from sheets["03"].data.milestones
+  //     budget:      '...',     // from charter.budget
+  //   }
+  // }
+
+  // ── Current Approved Plan (evolves with approved CCRs) ────────────────────
+  currentPlan: null,
+  // currentPlan shape:
+  // {
+  //   version:     1,            // increments with each applied CCR
+  //   lastUpdated: 'YYYY-MM-DD',
+  //   lastCCR:     'CCR-001',
+  //   snapshot: { ... }          // same shape as baseline.snapshot
+  // }
+
   // ── Layer 1 output ────────────────────────────────────────────────────────
   l1: {
     charter: null,

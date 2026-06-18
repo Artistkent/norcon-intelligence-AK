@@ -10,6 +10,7 @@ import CCRPopup             from "./l3/CCRPopup.jsx";
 import L3Sustainability      from "./l3/L3Sustainability.jsx";
 import L3Benefits            from "./l3/L3Benefits.jsx";
 import L3Risks              from "./l3/L3Risks.jsx";
+import { isBaselineReady, deriveCurrentPhase } from "../store/baselineUtils.js";
 import SustainabilityPrompt  from "./l3/SustainabilityPrompt.jsx";
 import {
   isBaselineField, describeChange, generateCCRId, generateMinorId,
@@ -64,7 +65,7 @@ function LeavePopup({ onLogCCR, onMinor, onDiscard, onCancel, tabLabel }) {
   );
 }
 
-export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete, onStateChange, onLogout }) {
+export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete, onStateChange, onLogout, baseline, currentPlan, onConfirmBaseline, onApplyCCRToPlan }) {
   const [activeTab,    setActiveTab]    = useState("home");
   const [ccrPending,   setCcrPending]   = useState(null);
   const [notification,  setNotification]  = useState(null);
@@ -88,6 +89,9 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
   const teamMembers  = l2?.loginCodes                   || [];
   const raciData     = sheets["04"]?.data               || {};
   const charter      = sheets["01"]?.data?.charter      || state.l1?.charter || {};
+  const baselineReady   = isBaselineReady(sheets);
+  const baselineActive  = !!baseline;
+  const currentPhase    = deriveCurrentPhase(activities, milestones);
   const approvers    = sheets["06"]?.data?.approvers    || [];
   const sustainConfig = sheets["10"]?.data              || {};
   const sustainData   = state.sustainData               || { evidence: [] };
@@ -314,6 +318,8 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     onMarkComplete, onGoToL2, onStateChange,
     onBaselineBlur: handleBaselineBlur,
     sustainConfig, onSustainRecord: handleSustainRecord,
+    baseline, currentPlan, baselineReady, baselineActive, currentPhase,
+    onConfirmBaseline, onApplyCCRToPlan,
     sustainPrompt, setSustainPrompt,
     onSetDirty: setDirty, onClearDirty: clearDirty,
   };
@@ -445,7 +451,8 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
             onStateChange={onStateChange}
             onBaselineBlur={handleBaselineBlur}
             onSetDirty={setDirty}
-            onClearDirty={clearDirty}/>
+            onClearDirty={clearDirty}
+            baseline={baseline}/>
         ) : TabComponent ? (
           <TabComponent {...sharedProps}/>
         ) : null}

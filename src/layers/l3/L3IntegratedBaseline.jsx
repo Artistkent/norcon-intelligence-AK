@@ -64,7 +64,7 @@ function autoDate(items) {
 
 // ── GanttSVG ─────────────────────────────────────────────────────────────────
 // Completely rewritten: week lines are a SINGLE overlay, bars are rendered after backgrounds
-function GanttSVG({ items, gStart, gEnd, phases }) {
+function GanttSVG({ items, gStart, gEnd, phases, baselineItems }) {
   const totalDays = Math.max(dBetween(gStart, gEnd), 60);
   const W         = totalDays * DAY_W;
   const HEADER_H  = 44;
@@ -185,6 +185,24 @@ function GanttSVG({ items, gStart, gEnd, phases }) {
         ))}
       </g>
 
+      {/* Ghost bars — original baseline dates, shown behind current bars */}
+      {baselineItems && baselineItems.map((bItem, ri) => {
+        const liveItem = items.find(i => i._id === bItem._id);
+        if (!liveItem) return null;
+        // Only show ghost if dates have changed
+        if (bItem.startDate === liveItem.startDate && bItem.targetDate === liveItem.targetDate) return null;
+        const isMile = bItem.itemType === "milestone";
+        const by = (rowList.find(r => r.type==="item" && r.item._id===bItem._id)?.y || 0) + ROW_H / 2;
+        if (!by) return null;
+        const gx1 = xOf(bItem.startDate || bItem.targetDate);
+        const gx2 = Math.max(gx1 + DAY_W, xOf(bItem.targetDate || bItem.startDate) + DAY_W);
+        if (isMile) {
+          const mx = gx1 + 6;
+          return <polygon key={`ghost-${bItem._id}`} points={`${mx},${by-8} ${mx+8},${by} ${mx},${by+8} ${mx-8},${by}`} fill="none" stroke="#e0a23a" strokeWidth={1.5} strokeDasharray="3 2" opacity={0.5}/>;
+        }
+        return <rect key={`ghost-${bItem._id}`} x={gx1} y={by-9} width={gx2-gx1} height={18} rx={3} fill="none" stroke="#e0a23a" strokeWidth={1.5} strokeDasharray="4 2" opacity={0.45}/>;
+      })}
+
       {/* Bars — rendered last so they sit on top */}
       {rowList.map((row, ri) => {
         if (row.type !== "item") return null;
@@ -232,7 +250,7 @@ function GanttSVG({ items, gStart, gEnd, phases }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function L3IntegratedBaseline({ state, activities, milestones, member, onStateChange, onBaselineBlur }) {
+export default function L3IntegratedBaseline({ state, activities, milestones, member, onStateChange, onBaselineBlur, baseline }) {
   const canEdit = member?.isPM;
   const sheets  = state?.l2?.sheets || {};
 
@@ -463,7 +481,7 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
         {/* RIGHT: Gantt SVG */}
         <div ref={rightRef} onScroll={syncRight}
           style={{ flex: 1, overflowX: "auto", overflowY: "auto" }}>
-          <GanttSVG items={items} gStart={gStart} gEnd={gEnd} phases={phases} />
+          <GanttSVG items={items} gStart={gStart} gEnd={gEnd} phases={phases} baselineItems={baseline?.snapshot?.activities?.map(a=>({...a,itemType:"activity"}))||[]} />
         </div>
       </div>
 

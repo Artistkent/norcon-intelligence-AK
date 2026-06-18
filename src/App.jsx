@@ -5,6 +5,7 @@ import PersonalisationLayer      from "./layers/PersonalisationLayer.jsx";
 import OperatingLayer            from "./layers/OperatingLayer.jsx";
 import LandingScreen             from "./layers/LandingScreen.jsx";
 import { INITIAL_STATE }         from "./store/appStore.js";
+import { buildSnapshot }         from "./store/baselineUtils.js";
 import { useProjectPersistence } from "./store/useProjectPersistence.js";
 
 const C = { bg:"#0D2B1B", surface:"#122E1E", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c" };
@@ -258,6 +259,50 @@ export default function App() {
     setState(prev => ({ ...prev, activeLayer:"L3" }));
   }, []);
 
+  // ── Confirm baseline — called from Dashboard banner ────────────────────────
+  const handleConfirmBaseline = useCallback((loginCode) => {
+    setState(prev => {
+      const sheets   = prev.l2.sheets;
+      const snapshot = buildSnapshot(sheets);
+      const today    = new Date().toISOString().slice(0,10);
+      return {
+        ...prev,
+        project: { ...prev.project, status: "active" },
+        baseline: {
+          version:       1,
+          confirmedDate: today,
+          confirmedBy:   loginCode,
+          snapshot,
+        },
+        currentPlan: {
+          version:     1,
+          lastUpdated: today,
+          lastCCR:     null,
+          snapshot,
+        },
+      };
+    });
+  }, []);
+
+  // ── Apply approved CCR to current plan — PM confirms manually ────────────
+  const handleApplyCCRToPlan = useCallback((ccrId, loginCode) => {
+    setState(prev => {
+      if (!prev.currentPlan) return prev;
+      const sheets   = prev.l2.sheets;
+      const snapshot = buildSnapshot(sheets);
+      const today    = new Date().toISOString().slice(0,10);
+      return {
+        ...prev,
+        currentPlan: {
+          version:     (prev.currentPlan.version || 1) + 1,
+          lastUpdated: today,
+          lastCCR:     ccrId,
+          snapshot,
+        },
+      };
+    });
+  }, []);
+
   const handleLaunch = useCallback(() => {
     const code = state.project?.code;
     if (code) {
@@ -310,7 +355,11 @@ export default function App() {
           onGoToL2={handleGoToL2}
           onMarkComplete={handleMarkComplete}
           onStateChange={setState}
-          onLogout={handleLogout}/>
+          onLogout={handleLogout}
+          baseline={state.baseline}
+          currentPlan={state.currentPlan}
+          onConfirmBaseline={handleConfirmBaseline}
+          onApplyCCRToPlan={handleApplyCCRToPlan}/>
       )}
 
       {state.activeLayer !== "L3" && (
