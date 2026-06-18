@@ -8,40 +8,152 @@ const C = {
 };
 
 function MetricCard({ label, value, sub, color }) {
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: color || C.sage, marginBottom: 3 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: C.muted }}>{sub}</div>}
+    </div>
+  );
+}
+
+
+function RagBar({ label, pct, color }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+      <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      <div style={{ fontSize: 12, color: C.dim, minWidth: 90 }}>{label}</div>
+      <div style={{ flex: 1, height: 5, background: C.surface2, borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3, transition: "width .5s ease" }} />
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, minWidth: 32, textAlign: "right" }}>{pct}%</div>
+    </div>
+  );
+}
+
+
+function parseDate(s) {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+export default function L3Dashboard({ state, activities, milestones, risks, issues, deliverables, baseline, currentPlan, baselineReady, baselineActive, currentPhase, onConfirmBaseline, onApplyCCRToPlan, member }) {
+  const sheets   = state?.l2?.sheets || {};
+  const changes  = sheets["06"]?.data?.changes       || [];
+  const costData = sheets["03"]?.data?.costData       || {};
+  const expLog   = sheets["03"]?.data?.expenditureLog || [];
+
+  // ── Progress ──────────────────────────────────────────────────────────────
+  const allTasks   = [...activities, ...milestones];
+  const doneTasks  = allTasks.filter(a => a._complete).length;
+  const pct        = allTasks.length > 0 ? Math.round((doneTasks / allTasks.length) * 100) : 0;
+  const overdue    = activities.filter(a => !a._complete && a.targetDate && new Date(a.targetDate) < new Date()).length;
+  const nextMs     = milestones.filter(m => !m._complete && m.targetDate).sort((a, b) => new Date(a.targetDate) - new Date(b.targetDate))[0];
+
+  const actPct = activities.length > 0 ? Math.round((activities.filter(a => a._complete).length / activities.length) * 100) : 0;
+  const msPct  = milestones.length > 0 ? Math.round((milestones.filter(m => m._complete).length / milestones.length) * 100) : 0;
+  const delPct = deliverables.length > 0 ? Math.round((deliverables.filter(d => parseFloat(d.actual || 0) >= parseFloat(d.target || 1)).length / deliverables.length) * 100) : 0;
+
+  const redRisks   = risks.filter(r => (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1) >= 9).length;
+  const ambRisks   = risks.filter(r => { const s = (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1); return s >= 4 && s < 9; }).length;
+  const issArr     = issues || [];
+  const openIssues = issArr.filter(i => i.status !== "Resolved").length;
+
+  // ── Change log ────────────────────────────────────────────────────────────
+  const majorChanges = changes.filter(c => c.type === "major");
+  const minorChanges = changes.filter(c => c.type === "minor");
+  const pendingCCRs  = majorChanges.filter(c => c.status === "pending" || c.status === "reviewed");
+  const approvedCCRs = majorChanges.filter(c => c.status === "approved");
+  const rejectedCCRs = majorChanges.filter(c => c.status === "rejected");
+
+  // ── Cost ──────────────────────────────────────────────────────────────────
+  const totalPlanned = Object.values(costData).reduce((s, c) => s + (parseFloat(c.plannedAmount) || 0), 0);
+  const totalActual  = expLog.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const costVariance = totalPlanned - totalActual;
+
+  // ── Cost performance chart ────────────────────────────────────────────────
+  const costChart = useMemo(() => {
+    // Sort all items by their Gantt date
+    const ganttItems = [...activities, ...milestones]
+      .filter(i => costData[i._id] && (i.targetDate || i.startDate))
+      .map(i => ({ ...i, _date: parseDate(i.targetDate || i.startDate) }))
+      .filter(i => i._date)
+      .sort((a, b) => a._date - b._date);
+
+    const planned = ganttItems.filter(i => parseFloat(costData[i._id]?.plannedAmount) > 0);
+    const actual  = ganttItems.filter(i => parseFloat(costData[i._id]?.actualAmount)  > 0);
+
+    if (!planned.length && !actual.length) return null;
+
+    // Cumulative lines
+    let cp = 0, ca = 0;
+    const planLine = planned.map(i => ({ d: i._date, v: (cp += parseFloat(costData[i._id].plannedAmount)) }));
+    const actLine  = actual.map( i => ({ d: i._date, v: (ca += parseFloat(costData[i._id].actualAmount))  }));
+
+    const allDates = [...planLine, ...actLine].map(p => p.d.getTime());
+    if (!allDates.length) return null;
+
+    const minMs  = Math.min(...allDates);
+    const maxMs  = Math.max(...allDates);
+    const span   = Math.max(maxMs - minMs, 30 * 86400000);
+    const dataMax = Math.max(...planLine.map(p => p.v), ...actLine.map(p => p.v), 1);
+    const maxV   = dataMax * 1.2;
+
+    const X1 = 40, X2 = 282, Y1 = 18, Y2 = 118;
+    const xOf = ms => X1 + ((ms - minMs) / span) * (X2 - X1);
+    const yOf = v  => Y2 - Math.min(1, v / maxV) * (Y2 - Y1);
+    const fmt  = ms => new Date(ms).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+
+    const zero = { d: new Date(minMs), v: 0 };
+    const planPts = [zero, ...planLine];
+    const actPts  = [zero, ...actLine];
+
+    const planPath = planPts.map((p, i) => `${i === 0 ? "M" : "L"}${xOf(p.d.getTime()).toFixed(1)},${yOf(p.v).toFixed(1)}`).join(" ");
+    const actPath  = actPts.map( (p, i) => `${i === 0 ? "M" : "L"}${xOf(p.d.getTime()).toFixed(1)},${yOf(p.v).toFixed(1)}`).join(" ");
+
+    // Month ticks
+    const ticks = [];
+    const tc = new Date(minMs); tc.setDate(1); tc.setMonth(tc.getMonth() + 1);
+    while (tc.getTime() < maxMs) { ticks.push(new Date(tc)); tc.setMonth(tc.getMonth() + 1); }
+
+    return { planPath, actPath, actLine, xOf, yOf, fmt, minMs, maxMs, dataMax, ticks };
+  }, [activities, milestones, costData]);
+
   const [activeTab, setActiveTab] = useState("overview");
 
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, overflow:"hidden" }}>
 
       {/* Sub-nav */}
-      <div style={{ background:"#122E1E", borderBottom:"1px solid #1F4D34", display:"flex", alignItems:"center", padding:"0 20px", flexShrink:0 }}>
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", padding:"0 20px", flexShrink:0 }}>
         {[["overview","Overview","📊"],["baseline","Baseline","📐"]].map(([id,label,icon]) => (
           <button key={id} onClick={() => setActiveTab(id)}
             style={{ display:"flex", alignItems:"center", gap:5, padding:"0 14px", height:38,
               fontSize:11, fontWeight:600, background:"none", border:"none",
-              borderBottom:`2px solid ${activeTab===id?"#3a9962":"transparent"}`,
-              color:activeTab===id?"#E5F0E8":"#5a7a66", cursor:"pointer" }}>
+              borderBottom:`2px solid ${activeTab===id?C.accentL:"transparent"}`,
+              color:activeTab===id?C.sage:C.muted, cursor:"pointer" }}>
             <span>{icon}</span>{label}
           </button>
         ))}
         {currentPhase && (
-          <div style={{ marginLeft:"auto", fontSize:10, color:"#5a7a66" }}>
-            Current phase: <span style={{ color:"#3a9962", fontWeight:700 }}>{currentPhase}</span>
+          <div style={{ marginLeft:"auto", fontSize:10, color:C.muted }}>
+            Current phase: <span style={{ color:C.accentL, fontWeight:700 }}>{currentPhase}</span>
           </div>
         )}
       </div>
 
       {/* Baseline confirmation banner */}
       {!baselineActive && baselineReady && activeTab==="overview" && (
-        <div style={{ background:"rgba(224,162,58,0.1)", border:"1px solid rgba(224,162,58,0.3)", padding:"10px 20px", display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-          <span style={{ fontSize:18 }}>📐</span>
+        <div style={{ background:"rgba(224,162,58,0.08)", borderBottom:`1px solid rgba(224,162,58,0.3)`, padding:"10px 20px", display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+          <span style={{ fontSize:16 }}>📐</span>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:"#e0a23a" }}>Ready to confirm baseline</div>
-            <div style={{ fontSize:11, color:"#8aac96" }}>All setup sheets approved. Confirm the baseline to launch the project.</div>
+            <div style={{ fontSize:12, fontWeight:700, color:C.milestone }}>Ready to confirm project baseline</div>
+            <div style={{ fontSize:11, color:C.muted }}>All setup sheets approved. Confirm the baseline to launch the project into active delivery.</div>
           </div>
           {member?.isPM && (
             <button onClick={() => onConfirmBaseline?.(member.loginCode)}
-              style={{ padding:"7px 16px", background:"#e0a23a", border:"none", borderRadius:6, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+              style={{ padding:"7px 16px", background:C.milestone, border:"none", borderRadius:6, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
               Confirm Baseline →
             </button>
           )}
@@ -50,7 +162,7 @@ function MetricCard({ label, value, sub, color }) {
 
       {/* OVERVIEW TAB */}
       {activeTab === "overview" && (
-        <div style={{ padding: 20, overflowY: "auto", flex:1 }}>
+        <div style={{ padding:20, overflowY:"auto", flex:1 }}>
       {/* Metric cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
         <MetricCard label="Overall Progress" value={`${pct}%`}          sub={`${doneTasks} of ${allTasks.length} tasks`} color={pct >= 70 ? C.activity : pct >= 40 ? C.milestone : C.risk} />
@@ -222,48 +334,47 @@ function MetricCard({ label, value, sub, color }) {
       {activeTab === "baseline" && (
         <div style={{ flex:1, overflowY:"auto", padding:20 }}>
           {!baseline ? (
-            <div style={{ padding:"48px 20px", textAlign:"center", color:"#5a7a66", fontSize:13 }}>
+            <div style={{ padding:"48px 20px", textAlign:"center", color:C.muted, fontSize:13 }}>
               {baselineReady
-                ? "Confirm the baseline from the Overview tab to begin tracking."
-                : "Complete and approve all setup sheets in L2 to establish the baseline."}
+                ? <span>Click <strong style={{ color:C.milestone }}>Confirm Baseline</strong> on the Overview tab to lock the project plan.</span>
+                : "Complete and approve sheets 01–04 in L2 Personalisation to establish the project baseline."}
             </div>
           ) : (
             <div style={{ maxWidth:760 }}>
-              <div style={{ background:"#122E1E", border:"1px solid #1F4D34", borderLeft:"4px solid #3a9962", borderRadius:8, padding:"14px 16px", marginBottom:16 }}>
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderLeft:`4px solid ${C.accentL}`, borderRadius:8, padding:"14px 16px", marginBottom:16 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <span style={{ fontSize:20 }}>📐</span>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:"#E5F0E8" }}>Project Baseline v{baseline.version}</div>
-                    <div style={{ fontSize:11, color:"#5a7a66" }}>Confirmed {baseline.confirmedDate} · {baseline.confirmedBy}</div>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.sage }}>Project Baseline v{baseline.version}</div>
+                    <div style={{ fontSize:11, color:C.muted }}>Confirmed {baseline.confirmedDate} · {baseline.confirmedBy}</div>
                   </div>
                   {currentPlan && currentPlan.version > 1 && (
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:"#e0a23a" }}>Current Plan v{currentPlan.version}</div>
-                      <div style={{ fontSize:10, color:"#5a7a66" }}>{currentPlan.lastCCR} · {currentPlan.lastUpdated}</div>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.milestone }}>Current Plan v{currentPlan.version}</div>
+                      <div style={{ fontSize:10, color:C.muted }}>{currentPlan.lastCCR} · {currentPlan.lastUpdated}</div>
                     </div>
                   )}
                 </div>
                 {currentPlan && currentPlan.version > 1 && (
-                  <div style={{ marginTop:8, padding:"5px 10px", background:"rgba(224,162,58,0.08)", borderRadius:5, fontSize:11, color:"#8aac96" }}>
-                    ⚠️ {currentPlan.version - baseline.version} approved change{currentPlan.version-baseline.version!==1?"s":""} applied since baseline
+                  <div style={{ marginTop:8, padding:"5px 10px", background:"rgba(224,162,58,0.08)", borderRadius:5, fontSize:11, color:C.dim }}>
+                    ⚠️ {currentPlan.version - baseline.version} approved change{currentPlan.version-baseline.version!==1?"s":""} applied since original baseline
                   </div>
                 )}
               </div>
-
               {baseline.snapshot?.charter && (() => {
                 const bc = baseline.snapshot.charter;
                 const lc = state?.l2?.sheets?.["01"]?.data?.charter || {};
                 return (
-                  <div style={{ background:"#122E1E", border:"1px solid #1F4D34", borderRadius:8, padding:"14px 16px", marginBottom:12 }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:"#5a7a66", textTransform:"uppercase", letterSpacing:".5px", marginBottom:10 }}>Charter Baseline</div>
+                  <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px 16px", marginBottom:12 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:10 }}>Charter Baseline</div>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
                       {[["Project","projectName"],["Budget","budget"],["Start","startDate"],["End","endDate"]].map(([lbl,key]) => {
                         const changed = bc[key] !== lc[key];
                         return (
                           <div key={key}>
-                            <div style={{ fontSize:9, color:"#5a7a66", textTransform:"uppercase", marginBottom:2 }}>{lbl}</div>
-                            <div style={{ color:changed?"#e0a23a":"#E5F0E8" }}>
-                              {bc[key]||"—"}{changed && <span style={{ fontSize:9, marginLeft:6 }}>→ {lc[key]||"—"}</span>}
+                            <div style={{ fontSize:9, color:C.muted, textTransform:"uppercase", letterSpacing:".4px", marginBottom:2 }}>{lbl}</div>
+                            <div style={{ fontSize:12, color:changed?C.milestone:C.sage }}>
+                              {bc[key]||"—"}{changed && <span style={{ fontSize:9, color:C.milestone, marginLeft:8 }}>→ {lc[key]||"—"} (changed)</span>}
                             </div>
                           </div>
                         );
@@ -272,33 +383,34 @@ function MetricCard({ label, value, sub, color }) {
                   </div>
                 );
               })()}
-
               {(baseline.snapshot?.activities||[]).length > 0 && (
-                <div style={{ background:"#122E1E", border:"1px solid #1F4D34", borderRadius:8, padding:"14px 16px", marginBottom:12, overflowX:"auto" }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:"#5a7a66", textTransform:"uppercase", letterSpacing:".5px", marginBottom:10 }}>Schedule Baseline</div>
+                <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px 16px", marginBottom:12, overflowX:"auto" }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:10 }}>Schedule Baseline</div>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
                     <thead>
-                      <tr style={{ background:"#183D28" }}>
+                      <tr style={{ background:C.surface2 }}>
                         {["ID","Activity","Phase","Baseline End","Current End","Status"].map(h => (
-                          <th key={h} style={{ padding:"5px 10px", textAlign:"left", fontSize:9, fontWeight:700, color:"#5a7a66", textTransform:"uppercase", borderBottom:"1px solid #1F4D34" }}>{h}</th>
+                          <th key={h} style={{ padding:"5px 10px", textAlign:"left", fontSize:9, fontWeight:700, color:C.muted, textTransform:"uppercase", borderBottom:`1px solid ${C.border}` }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {baseline.snapshot.activities.map((ba, i) => {
-                        const curr = activities.find(a => a._id === ba._id);
+                        const curr    = activities.find(a => a._id === ba._id);
                         const changed = curr && curr.targetDate !== ba.targetDate;
                         return (
-                          <tr key={i} style={{ borderBottom:"1px solid rgba(31,77,52,0.3)", background:i%2===0?"#122E1E":"transparent" }}>
-                            <td style={{ padding:"5px 10px", fontFamily:"monospace", fontSize:10, color:"#5a7a66" }}>{ba._id}</td>
-                            <td style={{ padding:"5px 10px", color:"#E5F0E8" }}>{ba.name||"—"}</td>
-                            <td style={{ padding:"5px 10px", color:"#5a7a66" }}>{ba.phase||"—"}</td>
-                            <td style={{ padding:"5px 10px", fontFamily:"monospace", color:"#8aac96" }}>{ba.targetDate||"—"}</td>
-                            <td style={{ padding:"5px 10px", fontFamily:"monospace", color:changed?"#e0a23a":"#8aac96" }}>{curr?.targetDate||"—"}</td>
+                          <tr key={i} style={{ borderBottom:`1px solid ${C.border}22`, background:i%2===0?C.surface:"transparent" }}>
+                            <td style={{ padding:"5px 10px", fontFamily:"monospace", fontSize:10, color:C.muted }}>{ba._id}</td>
+                            <td style={{ padding:"5px 10px", color:C.sage }}>{ba.name||"—"}</td>
+                            <td style={{ padding:"5px 10px", color:C.muted }}>{ba.phase||"—"}</td>
+                            <td style={{ padding:"5px 10px", fontFamily:"monospace", color:C.dim }}>{ba.targetDate||"—"}</td>
+                            <td style={{ padding:"5px 10px", fontFamily:"monospace", color:changed?C.milestone:C.dim }}>{curr?.targetDate||"—"}</td>
                             <td style={{ padding:"5px 10px" }}>
-                              {curr?._complete ? <span style={{ color:"#3ae0a2", fontSize:9 }}>✓ Done</span>
-                                : changed ? <span style={{ color:"#e0a23a", fontSize:9 }}>Changed</span>
-                                : <span style={{ color:"#5a7a66", fontSize:9 }}>On plan</span>}
+                              {curr?._complete
+                                ? <span style={{ fontSize:9, fontWeight:700, color:C.activity }}>✓ Done</span>
+                                : changed
+                                  ? <span style={{ fontSize:9, fontWeight:700, color:C.milestone }}>Date changed</span>
+                                  : <span style={{ fontSize:9, color:C.muted }}>On plan</span>}
                             </td>
                           </tr>
                         );
@@ -307,22 +419,21 @@ function MetricCard({ label, value, sub, color }) {
                   </table>
                 </div>
               )}
-
               {currentPlan && (() => {
                 const pending = (state?.l2?.sheets?.["06"]?.data?.changes||[]).filter(c => c.status==="approved" && c.id !== currentPlan.lastCCR);
                 if (!pending.length) return null;
                 return (
-                  <div style={{ background:"rgba(58,224,162,0.06)", border:"1px solid rgba(58,224,162,0.2)", borderRadius:8, padding:"12px 16px" }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:"#3ae0a2", marginBottom:8 }}>
+                  <div style={{ background:"rgba(58,224,162,0.06)", border:"1px solid rgba(58,224,162,0.25)", borderRadius:8, padding:"12px 16px" }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:C.activity, marginBottom:8 }}>
                       {pending.length} approved CCR{pending.length>1?"s":""} not yet applied to current plan
                     </div>
                     {pending.map((ccr, i) => (
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 0", borderTop:"1px solid rgba(31,77,52,0.3)" }}>
-                        <span style={{ fontFamily:"monospace", fontSize:11, color:"#3a9962" }}>{ccr.id}</span>
-                        <span style={{ fontSize:11, color:"#8aac96", flex:1 }}>{ccr.description}</span>
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 0", borderTop:`1px solid ${C.border}` }}>
+                        <span style={{ fontFamily:"monospace", fontSize:11, color:C.accentL }}>{ccr.id}</span>
+                        <span style={{ fontSize:11, color:C.dim, flex:1 }}>{ccr.description}</span>
                         {member?.isPM && (
                           <button onClick={() => onApplyCCRToPlan?.(ccr.id, member.loginCode)}
-                            style={{ padding:"4px 12px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                            style={{ padding:"4px 12px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>
                             Apply to Plan
                           </button>
                         )}
