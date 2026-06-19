@@ -4,7 +4,6 @@ import L3Dashboard          from "./l3/L3Dashboard.jsx";
 import L3IntegratedBaseline from "./l3/L3IntegratedBaseline.jsx";
 import L3RACI               from "./l3/L3RACI.jsx";
 import L3Report             from "./l3/L3Report.jsx";
-import L3ChangeControl      from "./l3/L3ChangeControl.jsx";
 import CCRPopup             from "./l3/CCRPopup.jsx";
 import L3Sustainability      from "./l3/L3Sustainability.jsx";
 import L3Benefits            from "./l3/L3Benefits.jsx";
@@ -182,7 +181,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     };
     saveChanges([...changes, newCCR]);
     setCcrPending(null);
-    setActiveTab("change");
+    setActiveTab("report");
   }, [ccrPending, changes, approvers, saveChanges]);
 
   const handleCCRMinor = useCallback(() => {
@@ -222,7 +221,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
   const handleNavigateToElement = useCallback((ccr, impact) => {
     if (impact === "Scope" || impact === "Cost") setActiveTab("home");
     else if (impact === "Time") setActiveTab("baseline");
-    else setActiveTab("tasks");
+    else setActiveTab("baseline");
   }, []);
 
   const handleSustainRecord = useCallback((records) => {
@@ -419,7 +418,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
               cursor:"pointer", whiteSpace:"nowrap", transition:"all .15s", position:"relative" }}>
             <span>{tab.icon}</span>
             {tab.label}
-            {tab.id==="change" && pendingForMe>0 && (
+            {tab.id==="report" && pendingForMe>0 && (
               <span style={{ position:"absolute", top:6, right:4, width:14, height:14, borderRadius:"50%",
                 background:C.risk, color:"#fff", fontSize:8, fontWeight:700,
                 display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -432,14 +431,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
 
       {/* Content */}
       <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-        {activeTab === "change" ? (
-          <L3ChangeControl
-            changes={changes}
-            approvers={approvers}
-            member={member}
-            onApproveAction={handleApproveAction}
-            onNavigateToElement={handleNavigateToElement}/>
-        ) : activeTab === "sustain" ? (
+        {activeTab === "sustain" ? (
           <L3Sustainability state={state} sustainData={sustainData}/>
         ) : activeTab === "baseline" ? (
           <L3IntegratedBaseline

@@ -58,7 +58,7 @@ function StakeholderCard({ sh, canEdit, member, onUpdateSH, onRaiseCCR }) {
   const today   = new Date();
 
   // Normalise: L2 may store as commsNextDate OR commPlan.nextContactDate
-  const nextContactDate = nextContactDate || sh.commsNextDate || "";
+  const nextContactDate = sh.commPlan?.nextContactDate || sh.commsNextDate || "";
   const isOverdue = nextContactDate &&
     new Date(nextContactDate) < today &&
     !sh.commPlan?.suspended;
@@ -359,7 +359,7 @@ export default function L3Stakeholders({ state, member, onStateChange }) {
 
   // Only Engaged stakeholders appear in L3
   const engaged = allSH
-    .filter(s => s.status === "Engaged")
+    .filter(s => s.status === "Engaged" || !s.status)
     .map((s, i) => {
       // Derive tag and colour from stored scores
       const seg = deriveTagFromScores(s.power, s.interest, s.influence);
