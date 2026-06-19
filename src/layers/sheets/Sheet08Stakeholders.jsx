@@ -41,7 +41,7 @@ const EIGHT_SEGMENTS = [
   { power:"H", interest:"L", influence:"L", tag:"Gatekeeper",            apm:"Endorse / Follow",   color:"#5a7a66" },
   { power:"L", interest:"H", influence:"H", tag:"Amplifier",             apm:"Contribute",         color:"#3a9ce0" },
   { power:"L", interest:"H", influence:"L", tag:"Active Supporter",      apm:"Follow",             color:"#3ae0a2" },
-  { power:"L", interest:"L", influence:"H", tag:"Peripheral Influencer", apm:"Observe / Contribute","color":"#8aac96" },
+  { power:"L", interest:"L", influence:"H", tag:"Peripheral Influencer", apm:"Observe / Contribute", color:"#8aac96" },
   { power:"L", interest:"L", influence:"L", tag:"Monitor",               apm:"Observe",            color:"#5a7a66" },
 ];
 
