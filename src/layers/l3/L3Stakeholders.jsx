@@ -53,6 +53,7 @@ function StakeholderCard({ sh, canEdit, member, onUpdateSH, onRaiseCCR }) {
   const [showAI,      setShowAI]      = useState(false);
   const [aiLoading,   setAILoading]   = useState(false);
   const [aiStrategy,  setAIStrategy]  = useState(sh.strategyAI||"");
+  const [aiError,     setAIError]     = useState(""); // FIX 19: surface AI errors to user
 
   const commLog = sh.commLog || [];
   const today   = new Date();
@@ -66,7 +67,7 @@ function StakeholderCard({ sh, canEdit, member, onUpdateSH, onRaiseCCR }) {
   const sentCol = SENTIMENT_COLORS[sh.sentiment] || C.muted;
   const tagColor = sh._tagColor || C.purple;
 
-  // ── Log communication ─────────────────────────────────────────────────────
+  // ── Log communication ─────────────────────────────────────────────────
   const submitLog = () => {
     if (!logForm.summary.trim()) return;
     const entry = {
@@ -94,7 +95,7 @@ function StakeholderCard({ sh, canEdit, member, onUpdateSH, onRaiseCCR }) {
     setShowLogForm(false);
   };
 
-  // ── Update sentiment ──────────────────────────────────────────────────────
+  // ── Update sentiment ──────────────────────────────────────────────────
   const updateSentiment = (sentiment) => {
     const entry = { sentiment, date:new Date().toISOString().slice(0,10), note:"" };
     onUpdateSH({
@@ -106,6 +107,7 @@ function StakeholderCard({ sh, canEdit, member, onUpdateSH, onRaiseCCR }) {
   // ── Generate AI strategy ──────────────────────────────────────────────────
   const generateStrategy = async () => {
     setAILoading(true);
+    setAIError(""); // clear any previous error on new attempt
     try {
       const prompt = `Generate a specific, actionable stakeholder engagement strategy (2-3 sentences) for this stakeholder on this project.
 
@@ -130,7 +132,10 @@ Return only the strategy text, no headers, no bullets.`;
       const text = (data.content||[]).map(b=>b.text||"").join("").trim();
       setAIStrategy(text);
       onUpdateSH({ strategyAI:text });
-    } catch {}
+    } catch (err) {
+      setAIError(`Strategy generation failed: ${err.message}`);
+      console.error("AI strategy generation failed:", err);
+    }
     setAILoading(false);
   };
 
@@ -221,16 +226,16 @@ Return only the strategy text, no headers, no bullets.`;
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
               <Lbl c="Engagement Strategy"/>
               {canEdit && (
-                <button onClick={() => { if(showAI){setAIStrategy("");} setShowAI(a=>!a); }}
+                <button onClick={() => { if(showAI){setAIStrategy(""); setAIError("");} setShowAI(a=>!a); }}
                   style={{ marginLeft:"auto", padding:"2px 10px", background:"none",
                     border:`1px solid ${C.accentL}`, borderRadius:5, color:C.accentL, fontSize:9, cursor:"pointer" }}>
-                  {aiLoading ? "Generating recommendations…" : "✦ Get Recommendations"}
+                  {aiLoading ? "Generating recommendations…" : "❖ Get Recommendations"}
                 </button>
               )}
             </div>
             {showAI && (
               <div style={{ background:C.surface2, borderRadius:6, padding:"10px 12px", marginBottom:8 }}>
-                {!aiStrategy && !aiLoading && (
+                {!aiStrategy && !aiLoading && !aiError && (
                   <button onClick={generateStrategy}
                     style={{ padding:"5px 12px", background:C.accent, border:"none", borderRadius:5,
                       color:"#fff", fontSize:11, cursor:"pointer" }}>
@@ -238,6 +243,17 @@ Return only the strategy text, no headers, no bullets.`;
                   </button>
                 )}
                 {aiLoading && <div style={{ fontSize:11, color:C.muted }}>Claude is generating a strategy…</div>}
+                {aiError && !aiLoading && (
+                  <div style={{ fontSize:11, color:C.risk, marginTop:4 }}>
+                    {aiError}
+                    <button onClick={generateStrategy}
+                      style={{ marginLeft:10, padding:"2px 8px", background:"none",
+                        border:`1px solid ${C.risk}`, borderRadius:4,
+                        color:C.risk, fontSize:10, cursor:"pointer" }}>
+                      Retry
+                    </button>
+                  </div>
+                )}
                 {aiStrategy && !aiLoading && (
                   <>
                     <div style={{ fontSize:11, color:C.dim, lineHeight:1.6, marginBottom:8 }}>{aiStrategy}</div>
@@ -435,7 +451,7 @@ export default function L3Stakeholders({ state, member, onStateChange }) {
   );
 }
 
-// ── Re-export the tag derivation used by StakeholderCard ─────────────────────
+// ── Re-export the tag derivation used by StakeholderCard ───────────────────────────
 const EIGHT_SEGMENTS_L3 = [
   { power:"H", interest:"H", influence:"H", tag:"Champion",             apm:"Lead",               color:"#e0a23a" },
   { power:"H", interest:"H", influence:"L", tag:"Key Decision Maker",   apm:"Own",                color:"#e05c5c" },
