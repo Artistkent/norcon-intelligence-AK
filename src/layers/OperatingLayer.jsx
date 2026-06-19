@@ -201,6 +201,27 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     setCcrPending(null);
   }, [ccrPending, changes, saveChanges]);
 
+  const handleAddToExistingCCR = useCallback((targetCCRId, changeDetails) => {
+    if (!ccrPending) return;
+    const newChanges = changes.map(c => {
+      if (c.id !== targetCCRId) return c;
+      const linked = c.linkedChanges || [];
+      return {
+        ...c,
+        linkedChanges: [...linked, {
+          description: changeDetails.description || ccrPending.description,
+          fieldName:   changeDetails.fieldName   || ccrPending.fieldName,
+          oldValue:    changeDetails.oldValue     ?? ccrPending.oldValue,
+          newValue:    changeDetails.newValue     ?? ccrPending.newValue,
+          date:        ccrPending.date,
+          requestedBy: ccrPending.requestedBy,
+        }],
+      };
+    });
+    saveChanges(newChanges);
+    setCcrPending(null);
+  }, [ccrPending, changes, saveChanges]);
+
   const handleApproveAction = useCallback((ccrId, newStatus, rejectionReason) => {
     const newChanges = changes.map(c => {
       if (c.id !== ccrId) return c;
