@@ -57,8 +57,10 @@ function StakeholderCard({ sh, canEdit, member, onUpdateSH, onRaiseCCR }) {
   const commLog = sh.commLog || [];
   const today   = new Date();
 
-  const isOverdue = sh.commPlan?.nextContactDate &&
-    new Date(sh.commPlan.nextContactDate) < today &&
+  // Normalise: L2 may store as commsNextDate OR commPlan.nextContactDate
+  const nextContactDate = nextContactDate || sh.commsNextDate || "";
+  const isOverdue = nextContactDate &&
+    new Date(nextContactDate) < today &&
     !sh.commPlan?.suspended;
 
   const sentCol = SENTIMENT_COLORS[sh.sentiment] || C.muted;
@@ -82,7 +84,7 @@ function StakeholderCard({ sh, canEdit, member, onUpdateSH, onRaiseCCR }) {
     const days = freqDays[freq];
     const nextDate = days
       ? new Date(Date.now() + days*86400000).toISOString().slice(0,10)
-      : sh.commPlan?.nextContactDate || "";
+      : nextContactDate || "";
 
     onUpdateSH({
       commLog: [...commLog, entry],
@@ -118,6 +120,8 @@ Project context: The project manager needs practical guidance on HOW to engage t
 Use the ${sh.apmLevel||"Follow"} engagement level as the basis.
 ${(sh.ease||5) < 5 ? "Note: Ease is low — recommend asynchronous or indirect approaches." : "Ease is reasonable — recommend direct engagement mechanisms."}
 
+${sh.sentiment === "Opposed" ? "IMPORTANT: This stakeholder is currently OPPOSED. The recommendation must prioritise addressing their concerns and shifting sentiment before standard engagement." : sh.sentiment === "Cautious" ? "NOTE: This stakeholder is CAUTIOUS. Recommendations should build trust before asking for active engagement." : ""}
+
 Return only the strategy text, no headers, no bullets.`;
 
       const res  = await fetch("/api/extract", { method:"POST", headers:{"Content-Type":"application/json"},
@@ -151,9 +155,9 @@ Return only the strategy text, no headers, no bullets.`;
         </span>
         <Badge label={sh.sentiment||"Neutral"} color={sentCol} small/>
         {isOverdue && <Badge label="Overdue" color={C.risk} small/>}
-        {sh.commPlan?.nextContactDate && !isOverdue && (
+        {nextContactDate && !isOverdue && (
           <span style={{ fontSize:9, color:C.muted, fontFamily:"monospace" }}>
-            Next: {sh.commPlan.nextContactDate}
+            Next: {nextContactDate}
           </span>
         )}
         <span style={{ color:C.muted, fontSize:11 }}>{open?"▲":"▼"}</span>
@@ -199,13 +203,13 @@ Return only the strategy text, no headers, no bullets.`;
                 <div><span style={{ color:C.muted }}>Frequency: </span><span style={{ color:C.dim }}>{sh.commPlan.frequency||sh.commsFreq||"—"}</span></div>
                 <div><span style={{ color:C.muted }}>Next contact: </span>
                   <span style={{ color:isOverdue?C.risk:C.activity, fontFamily:"monospace", fontWeight:isOverdue?700:400 }}>
-                    {sh.commPlan.nextContactDate||"Not set"}
+                    {nextContactDate||"Not set"}
                   </span>
                 </div>
-                {sh.commPlan.nextContactDate && canEdit && (
+                {nextContactDate && canEdit && (
                   <input type="date" style={{ ...inp, width:"auto", fontSize:10 }}
-                    value={sh.commPlan.nextContactDate}
-                    onChange={e => onUpdateSH({ commPlan:{ ...sh.commPlan, nextContactDate:e.target.value } })}/>
+                    value={nextContactDate}
+                    onChange={e => onUpdateSH({ commPlan:{ ...(sh.commPlan||{}), nextContactDate:e.target.value }, commsNextDate:e.target.value })}/>
                 )}
               </div>
               {sh.commsContent && <div style={{ fontSize:11, color:C.dim, marginTop:4 }}>Purpose: {sh.commsContent}</div>}
@@ -217,10 +221,10 @@ Return only the strategy text, no headers, no bullets.`;
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
               <Lbl c="Engagement Strategy"/>
               {canEdit && (
-                <button onClick={() => setShowAI(a=>!a)}
+                <button onClick={() => { if(showAI){setAIStrategy("");} setShowAI(a=>!a); }}
                   style={{ marginLeft:"auto", padding:"2px 10px", background:"none",
                     border:`1px solid ${C.accentL}`, borderRadius:5, color:C.accentL, fontSize:9, cursor:"pointer" }}>
-                  {aiLoading ? "Generating…" : "✨ AI Generate"}
+                  {aiLoading ? "Generating recommendations…" : "✦ Get Recommendations"}
                 </button>
               )}
             </div>
@@ -251,12 +255,24 @@ Return only the strategy text, no headers, no bullets.`;
                 )}
               </div>
             )}
-            <div style={{ fontSize:12, color:C.dim, lineHeight:1.6, padding:"6px 8px",
-              background:C.surface2, borderRadius:5, fontStyle:(!sh.strategyFinal&&!sh.engagementStrategy)?"italic":"normal" }}>
-              {sh.strategyFinal || sh.engagementStrategy ||
-                APM_TEMPLATES[sh.apmLevel] ||
-                "No strategy defined. Use AI Generate or return to L2 to set one."}
-            </div>
+            {canEdit ? (
+              <textarea
+                value={sh.strategyFinal || sh.engagementStrategy || ""}
+                onChange={e => onUpdateSH({ strategyFinal:e.target.value, engagementStrategy:e.target.value })}
+                placeholder={APM_TEMPLATES[sh.apmLevel] || "Describe the engagement approach for this stakeholder..."}
+                style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:5,
+                  color:C.sage, fontSize:12, padding:"8px 10px", outline:"none",
+                  fontFamily:"inherit", width:"100%", boxSizing:"border-box",
+                  resize:"vertical", minHeight:70, lineHeight:1.6 }}
+              />
+            ) : (
+              <div style={{ fontSize:12, color:C.dim, lineHeight:1.6, padding:"6px 8px",
+                background:C.surface2, borderRadius:5, fontStyle:(!sh.strategyFinal&&!sh.engagementStrategy)?"italic":"normal" }}>
+                {sh.strategyFinal || sh.engagementStrategy ||
+                  APM_TEMPLATES[sh.apmLevel] ||
+                  "No strategy defined."}
+              </div>
+            )}
           </div>
 
           {/* Communication log */}

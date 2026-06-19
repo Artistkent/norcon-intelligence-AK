@@ -7,7 +7,7 @@ const C = {
   risk:"#e05c5c", stakeholder:"#9c6ee0", milestone:"#e0a23a",
 };
 
-const SUB_PAGES = ["Project Brief","Stakeholders","Project Team","Governance"];
+const SUB_PAGES = ["Project Brief","Project Team","Governance"];
 
 const Card = ({children, style={}}) => (
   <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px 16px", ...style }}>{children}</div>

@@ -107,7 +107,7 @@ function PIIESlider({ dim, label, value, onChange, disabled }) {
         <div style={{ fontSize:9, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".4px" }}>{label}</div>
         <span style={{ fontSize:10, fontWeight:700, color:col }}>{value}/10</span>
         <span style={{ fontSize:9, padding:"1px 5px", borderRadius:8, background:col+"22", color:col, border:`1px solid ${col}44` }}>{band}</span>
-        <button onClick={() => setShowHint(h=>!h)}
+        <button onClick={e=>{e.stopPropagation();setShowHint(h=>!h);}}
           style={{ marginLeft:"auto", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:10 }}>
           {showHint ? "▲" : "?"}
         </button>
@@ -157,7 +157,15 @@ export default function Sheet08Stakeholders({ data, locked, loginCodes, onUpdate
   };
 
   const updateSH = (idx, field, value) => {
-    persist(stakeholders.map((s,i) => i===idx ? {...s,[field]:value} : s));
+    persist(stakeholders.map((s,i) => {
+      if (i !== idx) return s;
+      const updated = { ...s, [field]:value };
+      // Keep commPlan.nextContactDate in sync with commsNextDate
+      if (field === "commsNextDate") {
+        updated.commPlan = { ...(s.commPlan||{}), nextContactDate:value };
+      }
+      return updated;
+    }));
   };
 
   // ── Status change with modal ──────────────────────────────────────────────

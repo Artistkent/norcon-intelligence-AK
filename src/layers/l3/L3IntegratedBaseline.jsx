@@ -626,7 +626,7 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
             {expLog.length === 0
               ? <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>No expenditure logged yet.</div>
               : (
-                <div style={{ overflowX: "auto" }}>
+                <div style={{ overflowX: "auto", maxHeight:280, overflowY:"auto" }}>
                   <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11 }}>
                     <thead>
                       <tr>{["ID", "Activity", "Date", "Amount £", "Description", "Ref", ""].map(h => (
