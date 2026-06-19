@@ -7,7 +7,7 @@ const C = {
   risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2",
 };
 
-const PHASE_ORDER  = ["Concept","Definition","Development","Handover & Closeout","Execution"];
+const PHASE_ORDER  = ["Concept","Definition","Development","Execution","Handover & Closeout"];
 const PHASE_COLORS = {
   Concept:"#5d8aff", Definition:"#3ae0a2", Development:"#2E7D52",
   "Handover & Closeout":"#e0a23a", Execution:"#8aac96",
@@ -556,7 +556,16 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
         {/* RIGHT: Gantt SVG */}
         <div ref={rightRef} onScroll={syncRight}
           style={{ flex: 1, overflowX: "auto", overflowY: "auto" }}>
-          <GanttSVG items={items} gStart={gStart} gEnd={gEnd} phases={phases} baselineItems={baseline?.snapshot?.activities?.map(a=>({...a,itemType:"activity"}))||[]} />
+          <GanttSVG
+            items={items}
+            gStart={gStart}
+            gEnd={gEnd}
+            phases={phases}
+            baselineItems={[
+              ...(baseline?.snapshot?.activities || []).map(a => ({ ...a, itemType: "activity" })),
+              ...(baseline?.snapshot?.milestones || []).map(m => ({ ...m, itemType: "milestone" })),
+            ]}
+          />
         </div>
       </div>
 

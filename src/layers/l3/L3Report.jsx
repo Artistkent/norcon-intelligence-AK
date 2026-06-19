@@ -126,7 +126,7 @@ PROJECT: ${ctx.project.name||"Unknown"} | PM: ${ctx.project.manager||"—"} | SP
 DATES: ${ctx.project.start||"TBC"} to ${ctx.project.end||"TBC"} | BUDGET: ${ctx.project.budget||"—"}
 PROGRESS: ${ctx.progress.pct}% (${ctx.progress.done}/${ctx.progress.total} tasks). Overdue: ${ctx.progress.overdue}.
 BASELINE: ${ctx.baseline?`Confirmed ${ctx.baseline.confirmedDate}`:"Not confirmed"}
-RISKS: ${ctx.risks.red} RED, ${ctx.risks.amb} AMBER, ${ctx.risks.green} GREEN. Issues: ${ctx.issues.open} open.
+RISKS: ${ctx.risks.red} RED, ${ctx.risks.amber} AMBER, ${ctx.risks.green} GREEN. Issues: ${ctx.issues.open} open.
 BENEFITS: ${ctx.benefits.map(b=>b.bri!==null?`${b.name} BRI:${b.bri}%`:`${b.name} no data`).join("; ")||"None"}
 MILESTONES: ${ctx.milestones.complete}/${ctx.milestones.total}. Next: ${ctx.milestones.next?`${ctx.milestones.next.name} ${ctx.milestones.next.date}`:"None"}.
 CHANGES: ${ctx.changes.approved} approved, ${ctx.changes.pending} pending.`;
@@ -136,7 +136,10 @@ CHANGES: ${ctx.changes.approved} approved, ${ctx.changes.pending} pending.`;
       const d = await r.json();
       summary = (d.content||[]).map(b=>b.text||"").join("").trim();
       setAiSummary(summary);
-    } catch {}
+    } catch(err) {
+      setAiSummary("");
+      console.error("Workbook AI summary failed:", err.message);
+    }
     setGenStep("Building workbook...");
     await buildWorkbook(summary);
     setGenState("idle"); setGenStep("");

@@ -53,7 +53,24 @@ export default function L3Dashboard({ state, activities, milestones, risks, issu
 
   const actPct = activities.length > 0 ? Math.round((activities.filter(a => a._complete).length / activities.length) * 100) : 0;
   const msPct  = milestones.length > 0 ? Math.round((milestones.filter(m => m._complete).length / milestones.length) * 100) : 0;
-  const delPct = deliverables.length > 0 ? Math.round((deliverables.filter(d => parseFloat(d.actual || 0) >= parseFloat(d.target || 1)).length / deliverables.length) * 100) : 0;
+
+  // delPct: a deliverable counts as "achieved" when the average KPI achievement
+  // across its scored KPIs (those with both target and actual) reaches 85%+.
+  // KPI values live in d.kpis[], not on the deliverable object directly.
+  const delPct = deliverables.length > 0
+    ? Math.round(
+        deliverables.filter(d => {
+          const kpis   = d.kpis || [];
+          const scored = kpis.filter(k => k.target && k.actual !== undefined && k.actual !== "");
+          if (!scored.length) return false;
+          const avg = scored.reduce(
+            (s, k) => s + Math.min(100, (parseFloat(k.actual) / parseFloat(k.target)) * 100),
+            0
+          ) / scored.length;
+          return avg >= 85;
+        }).length / deliverables.length * 100
+      )
+    : 0;
 
   const redRisks   = risks.filter(r => (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1) >= 9).length;
   const ambRisks   = risks.filter(r => { const s = (parseInt(r.likelihood) || 1) * (parseInt(r.impact) || 1); return s >= 4 && s < 9; }).length;
