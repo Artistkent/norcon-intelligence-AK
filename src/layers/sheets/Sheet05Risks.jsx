@@ -120,6 +120,20 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
   const ownerOptions   = namedMembers.length > 0 ? namedMembers
     : [...new Set([...loginCodes.map(lc=>lc.role).filter(Boolean), ...PM_ROLES, ...DELIVERY_ROLES])];
 
+  // Escalation options: all named project members + standard governance roles.
+  // "including others" — covers sponsor, steering, board regardless of loginCodes.
+  const escalationOptions = [
+    ...new Set([
+      ...namedMembers,
+      "Project Sponsor",
+      "Project Manager",
+      "Project Director",
+      "Steering Committee",
+      "Board",
+      "Executive Team",
+    ]),
+  ].filter(Boolean);
+
   const save = (r, iss, pu, tr) => {
     const next = { risks:r??risks, issues:iss??issues, pendingUpdates:pu??pendingUpdates, transitions:tr??transitions };
     onUpdate(next, "in-progress");
@@ -380,7 +394,11 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
                   </div>
 
                   {/* Escalation path — required on all risks per governance */}
-                  <div><Lbl c="Escalation Path (if Red / materialises)"/><input style={inp} value={r.escalationPath||""} disabled={locked} onChange={e=>updateRisk(i,"escalationPath",e.target.value)} placeholder="Who to escalate to — e.g. Project Sponsor"/></div>
+                  <div><Lbl c="Escalation Path (if Red / materialises)"/>
+                    <EditableSelect value={r.escalationPath||""} disabled={locked}
+                      onChange={v=>updateRisk(i,"escalationPath",v)}
+                      options={escalationOptions} placeholder="Who to escalate to…"/>
+                  </div>
 
                   {/* Next review date */}
                   <div><Lbl c="Next Review Date"/><input style={inp} type="date" value={r.nextReviewDate||""} disabled={locked} onChange={e=>updateRisk(i,"nextReviewDate",e.target.value)}/></div>
@@ -448,7 +466,11 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
                       {ownerOptions.map(opt=><option key={opt} value={opt} style={{background:C.surface2}}>{opt}</option>)}
                     </select>
                   </div>
-                  <div><Lbl c="Escalation Path"/><input style={inp} value={iss.escalationPath||""} disabled={locked} onChange={e=>updateIssue(i,"escalationPath",e.target.value)} placeholder="Who to escalate to if unresolved?"/></div>
+                  <div><Lbl c="Escalation Path"/>
+                    <EditableSelect value={iss.escalationPath||""} disabled={locked}
+                      onChange={v=>updateIssue(i,"escalationPath",v)}
+                      options={escalationOptions} placeholder="Who to escalate to…"/>
+                  </div>
                   <div><Lbl c="Date Raised"/><input style={inp} type="date" value={iss.raisedDate||""} disabled={locked} onChange={e=>updateIssue(i,"raisedDate",e.target.value)}/></div>
                   <div><Lbl c="Target Resolution"/><input style={inp} type="date" value={iss.targetResolutionDate||""} disabled={locked} onChange={e=>updateIssue(i,"targetResolutionDate",e.target.value)}/></div>
                   <div style={{ gridColumn:"1/-1" }}><Lbl c="Resolution / Actions Taken"/><input style={inp} value={iss.resolution||""} disabled={locked} onChange={e=>updateIssue(i,"resolution",e.target.value)} placeholder="What has been or will be done?"/></div>

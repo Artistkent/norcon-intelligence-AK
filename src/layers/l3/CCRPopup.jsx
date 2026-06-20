@@ -23,14 +23,15 @@ const IMPACT_COLORS = {
   "No Impact": "#6a8c7a",
 };
 
-export default function CCRPopup({ change, existingCCRs, onSubmit, onAddToExisting, onMinor, onCancel }) {
+export default function CCRPopup({ change, existingCCRs, onSubmit, onAddToExisting, onMinor, onCancel, benefits }) {
   // Pre-fill justification when the CCR was raised from a Risk or Issue
-  const [justification, setJustification] = useState(change?.prefillJustification || "");
-  const [priority,      setPriority]      = useState("High");
-  const [impacts,       setImpacts]       = useState([]);
-  const [error,         setError]         = useState("");
-  const [showAddTo,     setShowAddTo]     = useState(false);
-  const [selectedCCR,   setSelectedCCR]   = useState("");
+  const [justification,  setJustification]  = useState(change?.prefillJustification || "");
+  const [priority,       setPriority]       = useState("High");
+  const [impacts,        setImpacts]        = useState([]);
+  const [benefitImpacts, setBenefitImpacts] = useState({}); // { [benefitId]: { affected, note, benefitName } }
+  const [error,          setError]          = useState("");
+  const [showAddTo,      setShowAddTo]      = useState(false);
+  const [selectedCCR,    setSelectedCCR]    = useState("");
 
   // Open CCRs that can be added to
   const openCCRs = (existingCCRs || []).filter(c =>
@@ -57,7 +58,10 @@ export default function CCRPopup({ change, existingCCRs, onSubmit, onAddToExisti
   const handleSubmit = () => {
     if (!justification.trim()) { setError("Please provide a justification for this change."); return; }
     if (!impacts.length)       { setError("Please select at least one impact area, or choose 'No Impact'."); return; }
-    onSubmit({ justification, priority, impacts });
+    const benefitImpactsList = Object.entries(benefitImpacts)
+      .filter(([,v])=>v.affected)
+      .map(([id,v])=>({ benefitId:id, benefitName:v.benefitName||"", note:v.note||"" }));
+    onSubmit({ justification, priority, impacts, benefitImpacts: benefitImpactsList });
   };
 
   const handleAddTo = () => {
@@ -152,6 +156,39 @@ export default function CCRPopup({ change, existingCCRs, onSubmit, onAddToExisti
               })}
             </div>
           </div>
+
+          {/* Benefit Impact Assessment — shown when substantive impacts are selected and benefits exist */}
+          {(benefits||[]).length > 0 && impacts.length > 0 && !impacts.includes("No Impact") && (
+            <div style={{ marginBottom:14, border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
+              <div style={{ padding:"9px 12px", background:C.surface2, borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:11, fontWeight:700, color:C.dim }}>📈 Benefit Impact</span>
+                <span style={{ fontSize:10, color:C.muted }}>Which benefits does this change affect?</span>
+              </div>
+              <div style={{ padding:"10px 12px", display:"flex", flexDirection:"column", gap:8 }}>
+                {(benefits||[]).map(b => {
+                  const bi = benefitImpacts[b._id] || {};
+                  return (
+                    <div key={b._id} style={{ display:"flex", alignItems:"flex-start", gap:10, paddingBottom:8, borderBottom:`1px solid ${C.border}22` }}>
+                      <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", flexShrink:0, marginTop:1 }}>
+                        <input type="checkbox" checked={!!bi.affected}
+                          onChange={e=>setBenefitImpacts(prev=>({...prev,[b._id]:{...prev[b._id],affected:e.target.checked,benefitName:b.name}}))}
+                          style={{ accentColor:C.accentL, cursor:"pointer" }}/>
+                      </label>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:11, color:bi.affected?C.sage:C.muted, marginBottom:bi.affected?4:0 }}>{b.name||"Unnamed benefit"}</div>
+                        {bi.affected && (
+                          <input style={{...inp, fontSize:11}}
+                            value={bi.note||""}
+                            onChange={e=>setBenefitImpacts(prev=>({...prev,[b._id]:{...prev[b._id],note:e.target.value,benefitName:b.name}}))}
+                            placeholder="How does this change affect this benefit? (optional)"/>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Priority */}
           <div style={{ marginBottom:14 }}>

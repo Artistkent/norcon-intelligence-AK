@@ -483,8 +483,8 @@ Write these sections in full:
                 return (
                   <div key={iss._id||i} style={{ display:"flex", gap:8, padding:"6px 8px",
                     borderBottom:`1px solid ${C.border}22`, borderLeft:`2px solid ${sc}`,
-                    marginBottom:4, borderRadius:4, alignItems:"center", flexWrap:"wrap" }}>
-                    <span style={{ fontFamily:"monospace", fontSize:9, color:C.muted, flexShrink:0, width:52 }}>{iss._id}</span>
+                    marginBottom:4, borderRadius:4, alignItems:"flex-start", flexWrap:"wrap" }}>
+                    <span style={{ fontFamily:"monospace", fontSize:9, color:C.muted, flexShrink:0, paddingTop:2, width:52 }}>{iss._id}</span>
                     <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:8,
                       background:sc+"22", color:sc, border:`1px solid ${sc}44`, flexShrink:0 }}>{iss.status||"Open"}</span>
                     {overdue && <span style={{ fontSize:9, color:C.risk, flexShrink:0 }}>Overdue</span>}
@@ -492,6 +492,11 @@ Write these sections in full:
                     {iss.owner && <span style={{ fontSize:9, color:C.accentL, flexShrink:0 }}>{iss.owner}</span>}
                     {iss.targetResolutionDate && <span style={{ fontSize:9, color:overdue?C.risk:C.muted, fontFamily:"monospace", flexShrink:0 }}>Due {iss.targetResolutionDate}</span>}
                     {(iss.actionLog||[]).length>0 && <span style={{ fontSize:9, color:C.dim, flexShrink:0 }}>{iss.actionLog.length} action{iss.actionLog.length>1?"s":""}</span>}
+                    {iss.status==="Resolved"&&iss.resolution&&(
+                      <div style={{ width:"100%", marginTop:3, fontSize:10, color:C.activity, fontStyle:"italic", paddingLeft:58 }}>
+                        ✓ {iss.resolution}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -532,6 +537,11 @@ Write these sections in full:
                 </div>
                 <div style={{ fontSize:12, color:C.sage, marginBottom:4 }}>{ccr.description||"—"}</div>
                 {ccr.justification && <div style={{ fontSize:11, color:C.muted, fontStyle:"italic" }}>{ccr.justification}</div>}
+                {(ccr.benefitImpacts||[]).length>0 && (
+                  <div style={{ marginTop:6, fontSize:10, color:C.dim }}>
+                    📈 Benefit impact: {ccr.benefitImpacts.map(b=>`${b.benefitName}${b.note?` — ${b.note}`:""}`).join(" · ")}
+                  </div>
+                )}
                 {ccr.proposedValue!==undefined && (
                   <div style={{ fontSize:11, marginTop:6 }}>
                     <span style={{ color:C.risk, textDecoration:"line-through", marginRight:8 }}>{String(ccr.oldValue||"")}</span>

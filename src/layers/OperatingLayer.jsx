@@ -161,7 +161,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     });
   }, [changes, member, loginCode, saveChanges]);
 
-  const handleCCRSubmit = useCallback(({ justification, priority, impacts }) => {
+  const handleCCRSubmit = useCallback(({ justification, priority, impacts, benefitImpacts }) => {
     if (!ccrPending) return;
     const reviewer = getReviewerForChange(approvers);
     const approver = getApproverForChange(impacts, approvers);
@@ -172,6 +172,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
       justification,
       priority,
       impacts,
+      benefitImpacts: benefitImpacts || [],
       status: "pending",
       reviewerCode: reviewer?.loginCode || "",
       reviewerName: reviewer?.name      || reviewer?.role || "",
@@ -511,6 +512,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
           change={ccrPending}
           approvers={approvers}
           existingCCRs={changes}
+          benefits={charter?.benefits||[]}
           onSubmit={handleCCRSubmit}
           onAddToExisting={handleAddToExistingCCR}
           onMinor={handleCCRMinor}

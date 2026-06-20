@@ -38,6 +38,29 @@ function OwnerSelect({ value, onChange, teamNames, placeholder }) {
   );
 }
 
+// Escalation select: populated from all project users + standard governance roles.
+// Always allows a Custom free-text entry as the last option.
+function EscalationSelect({ value, onChange, options }) {
+  const [custom, setCustom] = useState(false);
+  const [customVal, setCustomVal] = useState("");
+  if (custom) {
+    return (
+      <input autoFocus style={{...inp, borderColor:C.risk}} value={customVal}
+        onChange={e=>setCustomVal(e.target.value)}
+        onBlur={()=>{ if(customVal.trim()) onChange(customVal.trim()); setCustom(false); }}
+        onKeyDown={e=>{ if(e.key==="Enter"){ onChange(customVal.trim()||value); setCustom(false); } if(e.key==="Escape") setCustom(false); }}
+        placeholder="Type name or role…"/>
+    );
+  }
+  return (
+    <select style={inp} value={value||""} onChange={e=>{ if(e.target.value==="__custom__"){setCustom(true);setCustomVal("");} else onChange(e.target.value); }}>
+      <option value="">— select —</option>
+      {options.map(o=><option key={o} value={o} style={{background:C.surface2}}>{o}</option>)}
+      <option value="__custom__">Custom…</option>
+    </select>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Confirmation modal (generic)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,7 +193,7 @@ function CCRPrefillModal({ source, item, onConfirm, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Risk card
 // ─────────────────────────────────────────────────────────────────────────────
-function RiskCard({ risk, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onClose, onDelete, onMaterialise, onPropose, teamNames }) {
+function RiskCard({ risk, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onClose, onDelete, onMaterialise, onPropose, teamNames, escalationOptions }) {
   const [open,          setOpen]          = useState(false);
   const [showReview,    setShowReview]    = useState(false);
   const [reviewNote,    setReviewNote]    = useState("");
@@ -261,7 +284,15 @@ function RiskCard({ risk, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onClos
                 : <span style={{ color:C.accentL }}>{risk._suggestedOwner||"—"}</span>
               }
             </div>
-            {risk.escalationPath && <div style={{ gridColumn:"1/-1" }}><span style={{ color:C.muted }}>Escalation: </span><span style={{ color:C.risk }}>{risk.escalationPath}</span></div>}
+            {risk.escalationPath && <div style={{ gridColumn:"1/-1" }}>
+              <span style={{ color:C.muted }}>Escalation: </span><span style={{ color:C.risk }}>{risk.escalationPath}</span>
+            </div>}
+            {canEdit && (
+              <div style={{ gridColumn:"1/-1" }}>
+                <Lbl c="Escalation Path"/>
+                <EscalationSelect value={risk.escalationPath||""} onChange={v=>onUpdate(idx,"escalationPath",v)} options={escalationOptions}/>
+              </div>
+            )}
             {risk.nextReviewDate && <div style={{ gridColumn:"1/-1" }}><span style={{ color:C.muted }}>Next review: </span><span style={{ color:reviewOverdue?C.risk:C.dim }}>{risk.nextReviewDate}{reviewOverdue?" — OVERDUE":""}</span></div>}
             {risk.cause         && <div style={{ gridColumn:"1/-1" }}><span style={{ color:C.muted }}>Cause: </span><span style={{ color:C.dim }}>{risk.cause}</span></div>}
             {risk.potentialImpact && <div style={{ gridColumn:"1/-1" }}><span style={{ color:C.muted }}>Potential impact: </span><span style={{ color:C.dim }}>{risk.potentialImpact}</span></div>}
@@ -439,11 +470,16 @@ function RiskCard({ risk, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onClos
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue card
 // ─────────────────────────────────────────────────────────────────────────────
-function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDelete, onCreateSecondaryRisk, onPropose, teamNames }) {
+function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDelete, onCreateSecondaryRisk, onPropose, teamNames, escalationOptions }) {
   const [open,          setOpen]          = useState(false);
   const [newAction,     setNewAction]     = useState({ text:"", owner:"", dueDate:"" });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmSec,    setConfirmSec]    = useState(false);
+
+  const isResolved = iss.status === "Resolved";
+  // Once an issue is resolved it becomes read-only — preserves the audit trail.
+  // PM can change status back to re-open it; all other fields freeze.
+  const editAllowed = canEdit && !isResolved;
 
   const sc      = statusColor(iss.status);
   const pc      = priorityColor(iss.priority);
@@ -468,17 +504,29 @@ function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDele
         {iss.linkedRiskId && <Badge label={`← ${iss.linkedRiskId}`} color={C.opp} small/>}
         {(iss.secondaryRisks||[]).length>0 && <Badge label={`→ ${iss.secondaryRisks.length} risk${iss.secondaryRisks.length>1?"s":""}`} color={C.milestone} small/>}
         <span style={{ fontSize:12, color:C.sage, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{iss.name||"—"}</span>
-        {actions.length>0 && <Badge label={`${actions.length} action${actions.length>1?"s":""}`} color={C.accentL} small/>}
-        {iss.targetResolutionDate && <span style={{ fontSize:9, color:overdue?C.risk:C.muted, fontFamily:"monospace" }}>Due {iss.targetResolutionDate}</span>}
+        {/* Show resolution snippet in collapsed header when resolved */}
+        {isResolved && iss.resolution && (
+          <span style={{ fontSize:10, color:C.activity, maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontStyle:"italic" }}>
+            ✓ {iss.resolution}
+          </span>
+        )}
+        {isResolved && <span style={{ fontSize:10, color:C.muted }}>🔒</span>}
+        {actions.length>0 && !isResolved && <Badge label={`${actions.length} action${actions.length>1?"s":""}`} color={C.accentL} small/>}
+        {iss.targetResolutionDate && !isResolved && <span style={{ fontSize:9, color:overdue?C.risk:C.muted, fontFamily:"monospace" }}>Due {iss.targetResolutionDate}</span>}
         <span style={{ color:C.muted, fontSize:12 }}>{open?"▲":"▼"}</span>
       </div>
 
       {open && (
         <div style={{ borderTop:`1px solid ${C.border}`, padding:"12px 14px" }}>
           {iss.description && <div style={{ fontSize:12, color:C.dim, marginBottom:8, lineHeight:1.5 }}>{iss.description}</div>}
-          {iss.linkedRiskId && (
+            {iss.linkedRiskId && (
             <div style={{ background:C.surface2, border:`1px solid ${C.opp}44`, borderRadius:6, padding:"6px 10px", marginBottom:10, fontSize:10, color:C.opp }}>
               ⚡ This issue was created from risk <span style={{ fontFamily:"monospace" }}>{iss.linkedRiskId}</span>
+            </div>
+          )}
+          {isResolved && (
+            <div style={{ background:"rgba(58,224,162,0.06)", border:`1px solid ${C.activity}44`, borderRadius:6, padding:"8px 12px", marginBottom:10, fontSize:11, color:C.activity }}>
+              ✓ Resolved — this issue is read-only. {canEdit && <span style={{ color:C.dim }}>Change status to reopen.</span>}
             </div>
           )}
           {(iss.secondaryRisks||[]).length>0 && (
@@ -488,19 +536,26 @@ function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDele
           )}
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12, fontSize:11 }}>
-            {iss.cause         && <div><span style={{ color:C.muted }}>Cause: </span><span style={{ color:C.dim }}>{iss.cause}</span></div>}
-            {iss.impact        && <div><span style={{ color:C.muted }}>Impact: </span><span style={{ color:C.dim }}>{iss.impact}</span></div>}
+            {iss.cause  && <div><span style={{ color:C.muted }}>Cause: </span><span style={{ color:C.dim }}>{iss.cause}</span></div>}
+            {iss.impact && <div><span style={{ color:C.muted }}>Impact: </span><span style={{ color:C.dim }}>{iss.impact}</span></div>}
             <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
               <span style={{ color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:".3px" }}>Owner</span>
-              {canEdit
+              {editAllowed
                 ? <OwnerSelect value={iss.owner||""} onChange={v=>onUpdate(idx,"owner",v)} teamNames={teamNames} placeholder="— owner —"/>
                 : iss.owner?<span style={{ color:C.accentL }}>{iss.owner}</span>:null
               }
             </div>
-            {iss.escalationPath && <div><span style={{ color:C.muted }}>Escalation: </span><span style={{ color:C.dim }}>{iss.escalationPath}</span></div>}
-            {iss.raisedDate     && <div><span style={{ color:C.muted }}>Raised: </span><span style={{ color:C.muted }}>{iss.raisedDate}</span></div>}
+            <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+              <span style={{ color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:".3px" }}>Escalation Path</span>
+              {editAllowed
+                ? <EscalationSelect value={iss.escalationPath||""} onChange={v=>onUpdate(idx,"escalationPath",v)} options={escalationOptions}/>
+                : iss.escalationPath?<span style={{ color:C.dim }}>{iss.escalationPath}</span>:null
+              }
+            </div>
+            {iss.raisedDate && <div><span style={{ color:C.muted }}>Raised: </span><span style={{ color:C.muted }}>{iss.raisedDate}</span></div>}
           </div>
 
+          {/* Status — PM can always change status (to reopen resolved issues) */}
           {canEdit && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:8, marginBottom:12 }}>
               <div><Lbl c="Status"/>
@@ -509,7 +564,9 @@ function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDele
                 </select>
               </div>
               <div><Lbl c="Resolution Summary"/>
-                <input style={inp} value={iss.resolution||""} onChange={e=>onUpdate(idx,"resolution",e.target.value)} placeholder="What was done to resolve this?"/>
+                <input style={inp} value={iss.resolution||""} disabled={isResolved}
+                  onChange={e=>!isResolved&&onUpdate(idx,"resolution",e.target.value)}
+                  placeholder={isResolved?"Locked once resolved":"What was done to resolve this?"}/>
               </div>
             </div>
           )}
@@ -530,8 +587,8 @@ function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDele
                 </div>
               ))
             }
-            {(canEdit || canPropose) && (
-              canEdit ? (
+            {(editAllowed || canPropose) && (
+              editAllowed ? (
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 110px 110px auto", gap:6, marginTop:8 }}>
                   <input style={inp} value={newAction.text}    onChange={e=>setNewAction(p=>({...p,text:e.target.value}))}    placeholder="Action taken or assigned"/>
                   <OwnerSelect value={newAction.owner} onChange={v=>setNewAction(p=>({...p,owner:v}))} teamNames={teamNames} placeholder="Owner"/>
@@ -548,9 +605,9 @@ function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDele
           </div>
 
           {/* Footer: CCR + Secondary Risk + Delete */}
-          {(canEdit || canPropose) && (
+          {(editAllowed || canPropose) && (
             <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:10, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-              {canEdit && iss.status!=="Resolved" && (
+              {editAllowed && iss.status!=="Resolved" && (
                 <>
                   <button onClick={()=>onRaiseCCR("issue",iss)}
                     style={{ padding:"5px 12px", background:"none", border:`1px solid ${C.milestone}`, borderRadius:5, color:C.milestone, fontSize:11, cursor:"pointer" }}>
@@ -573,14 +630,14 @@ function IssueCard({ iss, idx, canEdit, canPropose, onUpdate, onRaiseCCR, onDele
                   )}
                 </>
               )}
-              {canPropose && !canEdit && (
+              {canPropose && !editAllowed && !isResolved && (
                 <button onClick={()=>onPropose?.("status", iss, "issue")}
                   style={{ padding:"5px 12px", background:"none", border:`1px dashed ${C.border}`, borderRadius:5, color:C.dim, fontSize:11, cursor:"pointer" }}>
                   Propose Status Change
                 </button>
               )}
-              {/* Delete */}
-              {canEdit && (
+              {/* Delete — only when not resolved */}
+              {editAllowed && (
                 <div style={{ marginLeft:"auto" }}>
                   {!confirmDelete ? (
                     <button onClick={()=>setConfirmDelete(true)}
@@ -693,6 +750,21 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
   const pendingCount = pendingUpdates.filter(u=>u.status==="pending").length;
 
   const teamNames = useMemo(()=>(loginCodes||[]).map(m=>m.name).filter(Boolean), [loginCodes]);
+
+  // Escalation options: all named team members + project sponsor + governance roles.
+  // Materialised risks link to issues; escalation paths must cover all project users.
+  const sponsor = state?.l2?.sheets?.["01"]?.data?.charter?.projectSponsor || "";
+  const escalationOptions = useMemo(() => {
+    const names = (loginCodes||[]).map(m=>m.name).filter(Boolean);
+    return [...new Set([
+      ...(sponsor ? [sponsor] : []),
+      ...names,
+      "Project Sponsor",
+      "Steering Committee",
+      "Board",
+      "Project Director",
+    ])].filter(Boolean);
+  }, [loginCodes, sponsor]);
 
   // ── Core state writer ────────────────────────────────────────────────────
   const write05 = useCallback((updater) => {
@@ -863,9 +935,10 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
   }, [ccrSource, member, onTriggerCCR]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const displayRisks = useMemo(()=>filterClosed?risks:risks.filter(r=>r.status!=="Closed"&&r.status!=="Materialised"), [risks,filterClosed]);
-  const closedCount   = risks.filter(r=>r.status==="Closed").length;
-  const matCount      = risks.filter(r=>r.status==="Materialised").length;
+  // Materialised risks remain on the register permanently — they are part of the audit
+  // trail and link to their derived issues. Only truly Closed risks get the toggle.
+  const displayRisks   = useMemo(()=>filterClosed?risks:risks.filter(r=>r.status!=="Closed"), [risks,filterClosed]);
+  const closedCount    = risks.filter(r=>r.status==="Closed").length;
   const openRisks     = displayRisks.filter(r=>ragColor(r.type||"Threat",r.likelihood,r.impact)===C.risk).length;
   const ambRisks      = displayRisks.filter(r=>ragColor(r.type||"Threat",r.likelihood,r.impact)===C.milestone).length;
   const openIssues    = issues.filter(i=>i.status!=="Resolved").length;
@@ -902,10 +975,10 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
               <span style={{ color:C.milestone }}>⬤ {ambRisks} Amber</span>
               <span style={{ color:C.activity }}>⬤ {displayRisks.length-openRisks-ambRisks} Green</span>
               {overdueReviews>0 && <span style={{ color:C.risk }}>🕐 {overdueReviews} review{overdueReviews>1?"s":""} overdue</span>}
-              {(closedCount+matCount)>0 && (
+              {closedCount>0 && (
                 <button onClick={()=>setFilterClosed(f=>!f)}
                   style={{ padding:"2px 8px", background:"none", border:`1px solid ${C.border}`, borderRadius:10, color:C.muted, fontSize:9, cursor:"pointer" }}>
-                  {filterClosed?`Hide closed/materialised`:`Show ${closedCount+matCount} closed/materialised`}
+                  {filterClosed?`Hide ${closedCount} closed`:`Show ${closedCount} closed`}
                 </button>
               )}
             </>
@@ -936,8 +1009,8 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
             <div>
               {displayRisks.length===0 && (
                 <div style={{ padding:"48px 0", textAlign:"center", color:C.muted, fontSize:13 }}>
-                  {filterClosed&&(closedCount+matCount)>0
-                    ?"No open risks. All risks are closed or materialised."
+                  {filterClosed&&closedCount>0
+                    ?"No open or materialised risks. All risks are closed."
                     :"No risks logged yet. Go to L2 → Sheet 05 to add risks."}
                 </div>
               )}
@@ -952,6 +1025,7 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
                   onDelete={deleteRisk}
                   onPropose={(type,item)=>setProposeModal({type,item,targetType:"risk"})}
                   teamNames={teamNames}
+                  escalationOptions={escalationOptions}
                   onClose={name=>{ setCloseToast(`Risk "${name}" closed`); setTimeout(()=>setCloseToast(""),4000); }}
                 />
               ))}
@@ -984,6 +1058,7 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
                   onCreateSecondaryRisk={handleCreateSecondaryRisk}
                   onPropose={(type,item,targetType)=>setProposeModal({type,item,targetType:targetType||"issue"})}
                   teamNames={teamNames}
+                  escalationOptions={escalationOptions}
                 />
               ))}
               {canEdit && (
