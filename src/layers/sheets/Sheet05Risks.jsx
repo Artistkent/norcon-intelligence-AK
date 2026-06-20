@@ -295,6 +295,9 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
             const residRag = residScore !== null ? ragColor(r.type, r.residualLikelihood, r.residualImpact) : null;
             const l3Guard = riskHasL3Data(r);
             const isMat   = r.status === "Materialised";
+            const isClosed = r.status === "Closed";
+            // Fields are read-only when: sheet locked OR risk was closed/materialised in L3
+            const fieldDisabled = locked || isClosed || isMat;
             return (
               <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`,
                 borderLeft:`3px solid ${isMat?C.opp:rag}`, borderRadius:7, padding:"12px 14px", marginBottom:10 }}>
@@ -327,7 +330,11 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
                   {(r.actions||[]).length>0 && <span style={{ fontSize:9, color:C.milestone }}>{r.actions.length} action{r.actions.length>1?"s":""}</span>}
 
                   {!locked && (
-                    l3Guard
+                    isClosed
+                      ? <span style={{ marginLeft:"auto", fontSize:10, color:C.muted, fontStyle:"italic" }}>Closed in L3 — reopen in L3 to edit</span>
+                      : isMat
+                      ? <span style={{ marginLeft:"auto", fontSize:10, color:C.opp, fontStyle:"italic" }}>Materialised → {r.linkedIssueId||"?"} — manage in L3</span>
+                      : l3Guard
                       ? <span style={{ marginLeft:"auto", fontSize:10, color:C.muted, fontStyle:"italic" }}>Active in L3 — use L3 to close or delete</span>
                       : <button onClick={()=>removeRisk(i)} style={{ marginLeft:"auto", background:"none", border:"none", color:C.risk, cursor:"pointer", fontSize:13 }}>✕</button>
                   )}
@@ -337,48 +344,48 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
                   {/* Type */}
                   <div>
                     <Lbl c="Risk Type"/>
-                    <select style={inp} value={r.type||"Threat"} disabled={locked} onChange={e=>updateRisk(i,"type",e.target.value)}>
+                    <select style={inp} value={r.type||"Threat"} disabled={fieldDisabled} onChange={e=>updateRisk(i,"type",e.target.value)}>
                       {["Threat","Opportunity"].map(t=><option key={t} value={t} style={{background:C.surface2}}>{t}</option>)}
                     </select>
                   </div>
-                  <div><Lbl c="Category"/><EditableSelect value={r.category||""} disabled={locked} onChange={v=>updateRisk(i,"category",v)} options={RISK_CATEGORIES} placeholder="Select..."/></div>
-                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Risk Name"/><input style={inp} value={r.name||""} disabled={locked} onChange={e=>updateRisk(i,"name",e.target.value)} placeholder="Short risk name"/></div>
-                  <div><Lbl c="Cause / Trigger"/><input style={inp} value={r.cause||""} disabled={locked} onChange={e=>updateRisk(i,"cause",e.target.value)} placeholder="What would trigger this?"/></div>
-                  <div><Lbl c="Potential Impact"/><input style={inp} value={r.potentialImpact||""} disabled={locked} onChange={e=>updateRisk(i,"potentialImpact",e.target.value)} placeholder="Consequence if it occurs"/></div>
+                  <div><Lbl c="Category"/><EditableSelect value={r.category||""} disabled={fieldDisabled} onChange={v=>updateRisk(i,"category",v)} options={RISK_CATEGORIES} placeholder="Select..."/></div>
+                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Risk Name"/><input style={inp} value={r.name||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"name",e.target.value)} placeholder="Short risk name"/></div>
+                  <div><Lbl c="Cause / Trigger"/><input style={inp} value={r.cause||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"cause",e.target.value)} placeholder="What would trigger this?"/></div>
+                  <div><Lbl c="Potential Impact"/><input style={inp} value={r.potentialImpact||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"potentialImpact",e.target.value)} placeholder="Consequence if it occurs"/></div>
 
                   {/* Inherent scores */}
                   <div>
                     <Lbl c="Inherent Likelihood"/>
-                    <select style={inp} value={r.likelihood||"1 - Low"} disabled={locked} onChange={e=>updateRisk(i,"likelihood",e.target.value)}>
+                    <select style={inp} value={r.likelihood||"1 - Low"} disabled={fieldDisabled} onChange={e=>updateRisk(i,"likelihood",e.target.value)}>
                       {LEVELS.map(l=><option key={l} value={l} style={{background:C.surface2}}>{l}</option>)}
                     </select>
                   </div>
                   <div>
                     <Lbl c="Inherent Impact"/>
-                    <select style={inp} value={r.impact||"1 - Low"} disabled={locked} onChange={e=>updateRisk(i,"impact",e.target.value)}>
+                    <select style={inp} value={r.impact||"1 - Low"} disabled={fieldDisabled} onChange={e=>updateRisk(i,"impact",e.target.value)}>
                       {LEVELS.map(l=><option key={l} value={l} style={{background:C.surface2}}>{l}</option>)}
                     </select>
                   </div>
 
                   <div><Lbl c="Response"/>
-                    <EditableSelect value={r.response||"Avoid"} disabled={locked}
+                    <EditableSelect value={r.response||"Avoid"} disabled={fieldDisabled}
                       onChange={v=>updateRisk(i,"response",v)}
                       options={r.type==="Opportunity"?RESPONSES_OPP:RESPONSES_THREAT}
                       placeholder="Select..."/>
                   </div>
-                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Mitigation / Response Strategy"/><input style={inp} value={r.mitigation||""} disabled={locked} onChange={e=>updateRisk(i,"mitigation",e.target.value)} placeholder="How will this risk be managed?"/></div>
+                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Mitigation / Response Strategy"/><input style={inp} value={r.mitigation||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"mitigation",e.target.value)} placeholder="How will this risk be managed?"/></div>
 
                   {/* Residual scores (after mitigation) */}
                   <div>
                     <Lbl c="Residual Likelihood (post-mitigation)"/>
-                    <select style={inp} value={r.residualLikelihood||""} disabled={locked} onChange={e=>updateRisk(i,"residualLikelihood",e.target.value)}>
+                    <select style={inp} value={r.residualLikelihood||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"residualLikelihood",e.target.value)}>
                       <option value="">Not assessed</option>
                       {LEVELS.map(l=><option key={l} value={l} style={{background:C.surface2}}>{l}</option>)}
                     </select>
                   </div>
                   <div>
                     <Lbl c="Residual Impact (post-mitigation)"/>
-                    <select style={inp} value={r.residualImpact||""} disabled={locked} onChange={e=>updateRisk(i,"residualImpact",e.target.value)}>
+                    <select style={inp} value={r.residualImpact||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"residualImpact",e.target.value)}>
                       <option value="">Not assessed</option>
                       {LEVELS.map(l=><option key={l} value={l} style={{background:C.surface2}}>{l}</option>)}
                     </select>
@@ -387,7 +394,7 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
                   {/* Owner */}
                   <div>
                     <Lbl c={namedMembers.length>0?"Risk Owner (person)":"Risk Owner (role)"}/>
-                    <select style={inp} value={r._suggestedOwner||""} disabled={locked} onChange={e=>updateRisk(i,"_suggestedOwner",e.target.value)}>
+                    <select style={inp} value={r._suggestedOwner||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"_suggestedOwner",e.target.value)}>
                       <option value="">Select owner...</option>
                       {ownerOptions.map(opt=><option key={opt} value={opt} style={{background:C.surface2}}>{opt}</option>)}
                     </select>
@@ -395,13 +402,13 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
 
                   {/* Escalation path — required on all risks per governance */}
                   <div><Lbl c="Escalation Path (if Red / materialises)"/>
-                    <EditableSelect value={r.escalationPath||""} disabled={locked}
+                    <EditableSelect value={r.escalationPath||""} disabled={fieldDisabled}
                       onChange={v=>updateRisk(i,"escalationPath",v)}
                       options={escalationOptions} placeholder="Who to escalate to…"/>
                   </div>
 
                   {/* Next review date */}
-                  <div><Lbl c="Next Review Date"/><input style={inp} type="date" value={r.nextReviewDate||""} disabled={locked} onChange={e=>updateRisk(i,"nextReviewDate",e.target.value)}/></div>
+                  <div><Lbl c="Next Review Date"/><input style={inp} type="date" value={r.nextReviewDate||""} disabled={fieldDisabled} onChange={e=>updateRisk(i,"nextReviewDate",e.target.value)}/></div>
                 </div>
               </div>
             );
@@ -424,6 +431,8 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
             const col     = statusColor(iss.status);
             const pc      = priorityColor(iss.priority);
             const l3Guard = issueHasL3Data(iss);
+            // Issue resolved or escalated in L3 becomes read-only in L2 until reopened in L3
+            const issueReadOnly = locked || iss.status === "Resolved";
             return (
               <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`,
                 borderLeft:`3px solid ${col}`, borderRadius:7, padding:"12px 14px", marginBottom:10 }}>
@@ -439,41 +448,43 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
                   )}
                   {(iss.actionLog||[]).length>0 && <span style={{ fontSize:9, color:C.accentL }}>{iss.actionLog.length} action{iss.actionLog.length>1?"s":""}</span>}
                   {!locked && (
-                    l3Guard
+                    iss.status === "Resolved"
+                      ? <span style={{ marginLeft:"auto", fontSize:10, color:C.activity, fontStyle:"italic" }}>✓ Resolved in L3 — reopen in L3 to edit</span>
+                      : l3Guard
                       ? <span style={{ marginLeft:"auto", fontSize:10, color:C.muted, fontStyle:"italic" }}>Active in L3 — use L3 to resolve or delete</span>
                       : <button onClick={()=>removeIssue(i)} style={{ marginLeft:"auto", background:"none", border:"none", color:C.risk, cursor:"pointer", fontSize:13 }}>✕</button>
                   )}
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Issue Name"/><input style={inp} value={iss.name||""} disabled={locked} onChange={e=>updateIssue(i,"name",e.target.value)} placeholder="Short issue name"/></div>
-                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Description"/><input style={inp} value={iss.description||""} disabled={locked} onChange={e=>updateIssue(i,"description",e.target.value)} placeholder="What is happening?"/></div>
-                  <div><Lbl c="Cause"/><input style={inp} value={iss.cause||""} disabled={locked} onChange={e=>updateIssue(i,"cause",e.target.value)} placeholder="What triggered this issue?"/></div>
-                  <div><Lbl c="Current Impact"/><input style={inp} value={iss.impact||""} disabled={locked} onChange={e=>updateIssue(i,"impact",e.target.value)} placeholder="How is this affecting the project?"/></div>
+                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Issue Name"/><input style={inp} value={iss.name||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"name",e.target.value)} placeholder="Short issue name"/></div>
+                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Description"/><input style={inp} value={iss.description||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"description",e.target.value)} placeholder="What is happening?"/></div>
+                  <div><Lbl c="Cause"/><input style={inp} value={iss.cause||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"cause",e.target.value)} placeholder="What triggered this issue?"/></div>
+                  <div><Lbl c="Current Impact"/><input style={inp} value={iss.impact||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"impact",e.target.value)} placeholder="How is this affecting the project?"/></div>
                   <div><Lbl c="Priority"/>
-                    <select style={inp} value={iss.priority||"Medium"} disabled={locked} onChange={e=>updateIssue(i,"priority",e.target.value)}>
+                    <select style={inp} value={iss.priority||"Medium"} disabled={issueReadOnly} onChange={e=>updateIssue(i,"priority",e.target.value)}>
                       {PRIORITIES.map(p=><option key={p} value={p} style={{background:C.surface2}}>{p}</option>)}
                     </select>
                   </div>
                   <div><Lbl c="Status"/>
-                    <select style={inp} value={iss.status||"Open"} disabled={locked} onChange={e=>updateIssue(i,"status",e.target.value)}>
+                    <select style={inp} value={iss.status||"Open"} disabled={issueReadOnly} onChange={e=>updateIssue(i,"status",e.target.value)}>
                       {ISSUE_STATUSES.map(s=><option key={s} value={s} style={{background:C.surface2}}>{s}</option>)}
                     </select>
                   </div>
                   <div>
                     <Lbl c={namedMembers.length>0?"Issue Owner (person)":"Issue Owner (role)"}/>
-                    <select style={inp} value={iss.owner||""} disabled={locked} onChange={e=>updateIssue(i,"owner",e.target.value)}>
+                    <select style={inp} value={iss.owner||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"owner",e.target.value)}>
                       <option value="">Select owner...</option>
                       {ownerOptions.map(opt=><option key={opt} value={opt} style={{background:C.surface2}}>{opt}</option>)}
                     </select>
                   </div>
                   <div><Lbl c="Escalation Path"/>
-                    <EditableSelect value={iss.escalationPath||""} disabled={locked}
+                    <EditableSelect value={iss.escalationPath||""} disabled={issueReadOnly}
                       onChange={v=>updateIssue(i,"escalationPath",v)}
                       options={escalationOptions} placeholder="Who to escalate to…"/>
                   </div>
-                  <div><Lbl c="Date Raised"/><input style={inp} type="date" value={iss.raisedDate||""} disabled={locked} onChange={e=>updateIssue(i,"raisedDate",e.target.value)}/></div>
-                  <div><Lbl c="Target Resolution"/><input style={inp} type="date" value={iss.targetResolutionDate||""} disabled={locked} onChange={e=>updateIssue(i,"targetResolutionDate",e.target.value)}/></div>
-                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Resolution / Actions Taken"/><input style={inp} value={iss.resolution||""} disabled={locked} onChange={e=>updateIssue(i,"resolution",e.target.value)} placeholder="What has been or will be done?"/></div>
+                  <div><Lbl c="Date Raised"/><input style={inp} type="date" value={iss.raisedDate||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"raisedDate",e.target.value)}/></div>
+                  <div><Lbl c="Target Resolution"/><input style={inp} type="date" value={iss.targetResolutionDate||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"targetResolutionDate",e.target.value)}/></div>
+                  <div style={{ gridColumn:"1/-1" }}><Lbl c="Resolution / Actions Taken"/><input style={inp} value={iss.resolution||""} disabled={issueReadOnly} onChange={e=>updateIssue(i,"resolution",e.target.value)} placeholder="What has been or will be done?"/></div>
                 </div>
               </div>
             );

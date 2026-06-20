@@ -247,6 +247,20 @@ CHANGES: ${ctx.changes.approved} approved, ${ctx.changes.pending} pending.`;
       (ri,ci,val,row)=>{if(ci===5&&reviewRows.length>0)return ragS(row[3],row[4]);return null;}
     ),"05c Risk Review History");
 
+    // 05e Baseline Risk Register — snapshot of the risk register at baseline confirmation.
+    // Unlike the live 05 sheet, this never changes after baseline is set.
+    const rb = state?.riskBaseline;
+    XLSX.utils.book_append_sheet(wb,buildSheet(
+      ["Risk ID","Type","Name","Category","Likelihood","Impact","Score","Response","Mitigation","Owner","Escalation Path","Snapshot Date"],
+      rb?.risks?.length>0
+        ? rb.risks.map(r=>{
+            const s=(parseInt(r.likelihood)||1)*(parseInt(r.impact)||1);
+            return[r._id,r.type||"Threat",r.name||"",r.category||"",r.likelihood||"",r.impact||"",s,r.response||"",r.mitigation||"",r._suggestedOwner||"",r.escalationPath||"",rb.snapshotDate||""];
+          })
+        : [["No baseline snapshot yet — confirm baseline in L3 to capture","","","","","","","","","","",""]],
+      [12,12,28,18,14,12,10,12,36,20,24,14],
+      (ri,ci,val,row)=>{if(ci===6&&typeof val==="number")return ragS(row[4],row[5]);return null;}
+    ),"05e Baseline Risk Register");
     // 05d Risk–Issue Transitions — governance record of materialisation and secondary risks
     const transRows=(sheets["05"]?.data?.transitions||[]);
     XLSX.utils.book_append_sheet(wb,buildSheet(
@@ -574,7 +588,7 @@ Write these sections in full:
             Fully styled Excel workbook with AI executive summary and 10 registers including benefits & KD tracker, issues, baseline comparison, and sustainability evidence.
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:4, marginBottom:12 }}>
-            {[["00","Executive Summary","✨ AI"],["01","Charter + Benefits","✓"],["02","Team","✓"],["03","Schedule","✓"],["04","RACI","✓"],["05","Risk Register","✓"],["05b","Issues Register","✓"],["05c","Risk Review History","✓"],["05d","Risk-Issue Transitions","✓"],["06","Change Control","✓"],["07","Benefits & KPIs","✓"],["08","Stakeholders","✓"],["09","Comms Plan","✓"],["10","Sustainability","✓"]].map(([n,l,badge])=>(
+            {[["00","Executive Summary","✨ AI"],["01","Charter + Benefits","✓"],["02","Team","✓"],["03","Schedule","✓"],["04","RACI","✓"],["05","Risk Register (live)","✓"],["05b","Issues Register","✓"],["05c","Risk Review History","✓"],["05d","Risk-Issue Transitions","✓"],["05e","Baseline Risk Register","✓"],["06","Change Control","✓"],["07","Benefits & KPIs","✓"],["08","Stakeholders","✓"],["09","Comms Plan","✓"],["10","Sustainability","✓"]].map(([n,l,badge])=>(
               <div key={n} style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px", background:C.surface2, borderRadius:5, fontSize:11 }}>
                 <span style={{ fontFamily:"monospace", fontSize:9, color:C.accentL, width:24, flexShrink:0 }}>{n}</span>
                 <span style={{ color:C.dim, flex:1, fontSize:10 }}>{l}</span>

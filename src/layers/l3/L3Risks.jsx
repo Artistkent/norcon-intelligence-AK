@@ -736,7 +736,8 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
   const [ccrSource,    setCcrSource]    = useState(null);
   const [filterClosed, setFilterClosed] = useState(false);
   const [closeToast,   setCloseToast]   = useState("");
-  const [proposeModal, setProposeModal] = useState(null); // { type, item, targetType }
+  const [proposeModal, setProposeModal] = useState(null);
+  const [reviewBannerDismissed, setReviewBannerDismissed] = useState(false); // { type, item, targetType }
 
   const canEdit    = member?.isPM;
   // Non-PM logged-in team members can submit proposals
@@ -1007,6 +1008,19 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
 
           {activeTab==="risks" && (
             <div>
+              {/* Overdue review banner */}
+              {overdueReviews > 0 && !reviewBannerDismissed && (
+                <div style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px",
+                  background:"rgba(224,92,92,0.08)", border:`1px solid ${C.risk}44`,
+                  borderRadius:7, marginBottom:12, fontSize:11 }}>
+                  <span style={{ color:C.risk }}>🕐</span>
+                  <span style={{ color:C.dim, flex:1 }}>
+                    <strong style={{ color:C.risk }}>{overdueReviews} risk{overdueReviews>1?"s":""}</strong> {overdueReviews>1?"have":"has"} a review overdue. Open each risk to log an updated score and note.
+                  </span>
+                  <button onClick={()=>setReviewBannerDismissed(true)}
+                    style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:13, flexShrink:0 }}>✕</button>
+                </div>
+              )}
               {displayRisks.length===0 && (
                 <div style={{ padding:"48px 0", textAlign:"center", color:C.muted, fontSize:13 }}>
                   {filterClosed&&closedCount>0

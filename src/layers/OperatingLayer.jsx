@@ -240,11 +240,20 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     }
   }, [changes, saveChanges]);
 
-  const handleNavigateToElement = useCallback((ccr, impact) => {
-    if (impact === "Scope" || impact === "Cost") setActiveTab("home");
-    else if (impact === "Time") setActiveTab("baseline");
-    else setActiveTab("baseline");
-  }, []);
+  // Wrap onConfirmBaseline to snapshot the risk register at the point of confirmation.
+  // The snapshot is stored separately from the live register so it is never overwritten
+  // by subsequent L3 updates — it represents "risks at launch" for reporting.
+  const handleConfirmBaseline = useCallback(() => {
+    onStateChange(prev => ({
+      ...prev,
+      riskBaseline: {
+        snapshotDate: new Date().toLocaleDateString("en-GB"),
+        risks:  prev.l2.sheets["05"]?.data?.risks  || [],
+        issues: prev.l2.sheets["05"]?.data?.issues || [],
+      },
+    }));
+    onConfirmBaseline?.();
+  }, [onConfirmBaseline, onStateChange]);
 
   const handleSustainRecord = useCallback((records) => {
     // records is now an array (one entry per dimension)
@@ -367,7 +376,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     sustainConfig, onSustainRecord: handleSustainRecord,
     baseline, currentPlan, baselineReady, baselineActive, currentPhase,
     isSponsor, canApprove,
-    onConfirmBaseline, onApplyCCRToPlan,
+    onConfirmBaseline: handleConfirmBaseline, onApplyCCRToPlan,
     sustainPrompt, setSustainPrompt,
     onSetDirty: setDirty, onClearDirty: clearDirty,
     // ITEM 2: expose setCcrPending so L3Risks can surface the main CCRPopup
@@ -500,7 +509,8 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
             baseline={baseline}
             onMarkComplete={onMarkComplete}
             sustainConfig={sustainConfig}
-            setSustainPrompt={setSustainPrompt}/>
+            setSustainPrompt={setSustainPrompt}
+            onConfirmBaseline={handleConfirmBaseline}/>
         ) : TabComponent ? (
           <TabComponent {...sharedProps}/>
         ) : null}
