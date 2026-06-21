@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import L3Home               from "./l3/L3Home.jsx";
 import L3Dashboard          from "./l3/L3Dashboard.jsx";
-import L3IntegratedBaseline from "./l3/L3IntegratedBaseline.jsx";
+import L3IntegratedBaseline from "./l3/IntegratedBaseline.jsx";
 import L3RACI               from "./l3/L3RACI.jsx";
 import L3Report             from "./l3/L3Report.jsx";
 import CCRPopup             from "./l3/CCRPopup.jsx";
@@ -240,9 +240,6 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     }
   }, [changes, saveChanges]);
 
-  // Wrap onConfirmBaseline to snapshot the risk register at the point of confirmation.
-  // The snapshot is stored separately from the live register so it is never overwritten
-  // by subsequent L3 updates — it represents "risks at launch" for reporting.
   const handleConfirmBaseline = useCallback(() => {
     onStateChange(prev => ({
       ...prev,
@@ -256,7 +253,6 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
   }, [onConfirmBaseline, onStateChange]);
 
   const handleSustainRecord = useCallback((records) => {
-    // records is now an array (one entry per dimension)
     const arr   = Array.isArray(records) ? records : [records];
     const dated = arr.map(r => ({ ...r, date: new Date().toLocaleDateString("en-GB") }));
     onStateChange(prev => ({
@@ -286,8 +282,6 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     setActiveTab(toTab);
   };
 
-  // FIX 14: renamed inner variable from `changes` to `dirtyChanges` to avoid
-  // shadowing the outer CCR changes array (sheets["06"].data.changes).
   const handleLeaveLogCCR = () => {
     const toTab        = leavePopup?.toTab;
     const tabLabel     = TABS.find(t=>t.id===activeTab)?.label || activeTab;
@@ -310,7 +304,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     });
     dirtyRef.current = false;
     dirtyDescRef.current = [];
-    dirtyRollbackRef.current = []; // rollbacks consumed — CCR submitted, not cancelled
+    dirtyRollbackRef.current = [];
     if (toTab) setActiveTab(toTab);
   };
 
@@ -341,10 +335,6 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     if (toTab) setActiveTab(toTab);
   };
 
-  // Expose dirty setter to child tabs via prop.
-  // FIX BUG 2: __ROLLBACK__ prefixed entries are structural rollback payloads,
-  // not human-readable descriptions. Store them in a separate ref so the CCR
-  // cancel handler can revert each field change individually.
   const dirtyRollbackRef = useRef([]);
   const setDirty = useCallback((desc) => {
     if (!desc) return;
@@ -353,7 +343,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
         const payload = JSON.parse(desc.slice("__ROLLBACK__".length));
         dirtyRollbackRef.current = [...dirtyRollbackRef.current, payload];
       } catch { /* ignore malformed rollback */ }
-      return; // do not add to human-readable descriptions
+      return;
     }
     dirtyRef.current = true;
     if (!dirtyDescRef.current.includes(desc)) {
@@ -379,13 +369,9 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     onConfirmBaseline: handleConfirmBaseline, onApplyCCRToPlan,
     sustainPrompt, setSustainPrompt,
     onSetDirty: setDirty, onClearDirty: clearDirty,
-    // ITEM 2: expose setCcrPending so L3Risks can surface the main CCRPopup
-    // after its pre-fill step, getting the full impact / priority flow.
     onTriggerCCR: setCcrPending,
   };
 
-  // FIX 22: removed dead `change: null` entry (Change Control is now a section
-  // inside the Report tab, not a standalone tab).
   const TabComponent = {
     home:         L3Home,
     dashboard:    L3Dashboard,
@@ -402,7 +388,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
   const pct        = totalTasks > 0 ? Math.round((doneTasks/totalTasks)*100) : 0;
 
   return (
-    <div style={{ background:C.bg, color:C.sage, minHeight:"100vh", display:"flex", flexDirection:"column",
+    <div style={{ background:C.bg, color:C.sage, height:"100vh", display:"flex", flexDirection:"column",
       fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", fontSize:13, overflow:"hidden" }}>
 
       {/* Top bar */}
@@ -489,8 +475,8 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
         ))}
       </div>
 
-      {/* Content */}
-      <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+      {/* Content — fills all remaining height, no overflow */}
+      <div style={{ flex:1, minHeight:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {activeTab === "sustain" ? (
           <L3Sustainability state={state} sustainData={sustainData}/>
         ) : activeTab === "baseline" ? (
@@ -516,7 +502,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
         ) : null}
       </div>
 
-      {/* CCR Popup — shown for baseline edits AND for CCRs raised from Risks/Issues */}
+      {/* CCR Popup */}
       {ccrPending && (
         <CCRPopup
           change={ccrPending}
@@ -527,8 +513,6 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
           onAddToExisting={handleAddToExistingCCR}
           onMinor={handleCCRMinor}
           onCancel={() => {
-            // FIX BUG 2: revert every date change that accumulated before the CCR popup
-            // by replaying each rollback payload through the same state path updateItemDate uses.
             dirtyRollbackRef.current.forEach(({ taskId, itemType, field, oldVal }) => {
               onStateChange(prev => {
                 const key = itemType === "milestone" ? "milestones" : "activities";
@@ -558,7 +542,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
           onCancel={()=>setLeavePopup(null)}/>
       )}
 
-      {/* Sustainability micro-prompt — triggered from Tasks or RACI */}
+      {/* Sustainability micro-prompt */}
       {sustainPrompt && (
         <SustainabilityPrompt
           activity={sustainPrompt}
