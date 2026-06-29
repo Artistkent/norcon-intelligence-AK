@@ -429,9 +429,9 @@ function PMSetup({ tier, onConfirm, onBack }) {
           {" · "}{tierCfg.sheets.length} sheets active
           {" · "}<span style={{ color:C.accentL }}>PM · Full Access</span>
         </div>
-      </div>{/* end maxWidth div */}
-      </div>{/* end content centering div */}
-    </div>{/* end outer flex column */}
+      </div>
+      </div>
+    </div>
   );
 }
 
