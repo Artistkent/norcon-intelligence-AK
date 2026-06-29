@@ -23,17 +23,22 @@ const C = {
   risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2",
 };
 
-const TABS = [
-  { id:"home",      label:"Home",                  icon:"🏠" },
-  { id:"dashboard", label:"Dashboard",              icon:"📊" },
-  { id:"baseline",  label:"Integrated Baseline",    icon:"📅" },
-  { id:"raci",      label:"RACI",                   icon:"📋" },
-  { id:"benefits",  label:"Benefits & Value",        icon:"🎯" },
-  { id:"risks",     label:"Risks & Issues",          icon:"⚠️" },
-  { id:"stakeholders", label:"Stakeholders",       icon:"👥" },
-  { id:"sustain",   label:"Sustainability",          icon:"🌿" },
-  { id:"report",    label:"Report",                  icon:"📄" },
+const ALL_TABS = [
+  { id:"home",         label:"Home",               icon:"🏠" },
+  { id:"dashboard",    label:"Dashboard",           icon:"📊" },
+  { id:"baseline",     label:"Integrated Baseline", icon:"📅" },
+  { id:"raci",         label:"RACI",                icon:"📋" },
+  { id:"benefits",     label:"Benefits & Value",    icon:"🎯" },
+  { id:"risks",        label:"Risks & Issues",      icon:"⚠️" },
+  { id:"stakeholders", label:"Stakeholders",        icon:"👥" },
+  { id:"sustain",      label:"Sustainability",      icon:"🌿" },
+  { id:"report",       label:"Report",              icon:"📄" },
 ];
+
+const TIER_TABS = {
+  light: ["home","dashboard","baseline","raci","risks","sustain","report"],
+  full:  ["home","dashboard","baseline","raci","benefits","risks","stakeholders","sustain","report"],
+};
 
 // ── Leave-page save popup ────────────────────────────────────────────
 function LeavePopup({ onLogCCR, onMinor, onDiscard, onCancel, tabLabel }) {
@@ -78,6 +83,11 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
   const isPM       = member?.isPM;
   const isSponsor  = member?.isSponsor  || false;
   const canApprove = member?.canApprove || isPM;
+
+  // Derive active tabs from project tier — default to full if no tier set
+  const tier     = state.projectTier || "full";
+  const tabIds   = TIER_TABS[tier] || TIER_TABS.full;
+  const TABS     = ALL_TABS.filter(t => tabIds.includes(t.id));
   const loginCode  = member?.loginCode;
 
   const activities   = sheets["03"]?.data?.activities   || [];
