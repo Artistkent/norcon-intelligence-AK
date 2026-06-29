@@ -622,13 +622,59 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
   };
 
   // ── Role popup ─────────────────────────────────────────────────────────────
-  const ALL_ROLES = [
-    "Project Manager","Assistant Project Manager","Project Sponsor",
-    "Project Scheduler","Project Controller","Risk Owner",
-    "Communications Lead","Technical Lead","Research Coordinator",
-    "Marketing Lead","Document Controller","Finance Lead",
-    "Stakeholder Liaison","Quality Assurance Lead","IT Lead",
-    "Legal Advisor","Procurement Lead","Change Manager",
+  const ROLE_GROUPS = [
+    { label:"Governance & Leadership", roles:[
+      "Project Sponsor","Senior Responsible Owner","Executive Steering Committee Member",
+      "Programme Manager","Portfolio Manager","Project Board Member","Client Representative",
+      "Independent Assessor","Project Auditor",
+    ]},
+    { label:"Project Management", roles:[
+      "Assistant Project Manager","Project Coordinator","Project Scheduler",
+      "Project Controller","Planning Engineer","Project Administrator",
+      "Document Controller","Configuration Manager","Project Support Officer",
+    ]},
+    { label:"Risk, Change & Quality", roles:[
+      "Risk Owner","Risk Manager","Change Manager","Change Control Officer",
+      "Quality Assurance Lead","Quality Manager","Compliance Officer",
+      "Health & Safety Advisor","Environmental Advisor",
+    ]},
+    { label:"Technical & Delivery", roles:[
+      "Technical Lead","Systems Engineer","Design Manager","Architect",
+      "Software Developer","Data Analyst","IT Lead","Infrastructure Lead",
+      "Construction Manager","Site Manager","Quantity Surveyor",
+      "Structural Engineer","Civil Engineer","Mechanical Engineer",
+      "Electrical Engineer","BIM Manager","Testing Lead",
+    ]},
+    { label:"Business & Finance", roles:[
+      "Finance Lead","Budget Manager","Financial Analyst","Procurement Lead",
+      "Commercial Manager","Contracts Manager","Business Analyst",
+      "Benefits Realisation Manager","Business Change Manager",
+    ]},
+    { label:"People & Communications", roles:[
+      "Communications Lead","Stakeholder Liaison","Public Relations Manager",
+      "Community Engagement Officer","Marketing Lead","Training Lead",
+      "Organisational Development Lead","HR Business Partner",
+    ]},
+    { label:"Research & Knowledge", roles:[
+      "Research Coordinator","Research Lead","Knowledge Manager",
+      "Subject Matter Expert","Academic Advisor","Data Manager",
+      "Monitoring & Evaluation Lead","Impact Assessor",
+    ]},
+    { label:"Legal & External", roles:[
+      "Legal Advisor","Legal Counsel","Contract Advisor","Regulatory Advisor",
+      "Planning Consultant","External Consultant","Third Party Representative",
+      "Supplier Manager","Partner Liaison",
+    ]},
+  ];
+
+  const [customRoleInput, setCustomRoleInput] = useState("");
+  const [customRoles,     setCustomRoles]     = useState([]);
+  const [aiRoleSuggestions, setAiRoleSuggestions] = useState([]);
+  const [rolesAiLoading,    setRolesAiLoading]    = useState(false);
+
+  const allAvailableRoles = [
+    ...ROLE_GROUPS.flatMap(g => g.roles),
+    ...customRoles,
   ];
 
   const toggleRole = (role) => {
@@ -636,6 +682,43 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
       prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
     );
   };
+
+  const addCustomRole = () => {
+    const r = customRoleInput.trim();
+    if (!r || allAvailableRoles.includes(r) || r === "Project Manager") return;
+    setCustomRoles(prev => [...prev, r]);
+    setSelectedRoles(prev => [...prev, r]);
+    setCustomRoleInput("");
+  };
+
+  // Fire AI suggestions immediately when popup opens
+  useEffect(() => {
+    if (!showRolePopup) return;
+    const ctx = buildSheetContext();
+    const hasContext = ctx.projectName || ctx.purpose || (sheets["01"]?.data?.charter?.projectName);
+    if (!hasContext) return;
+    setRolesAiLoading(true);
+    setAiStatus("Analysing project context for role suggestions…");
+    callExtract([{ role:"user", content:
+      `You are a project management expert. Based on this project context, suggest the most relevant team roles.
+Project: ${ctx.projectName || "Unknown"}
+Purpose: ${ctx.purpose || "Not specified"}
+Tier: ${tier}
+
+Return ONLY valid JSON, no markdown, no preamble:
+{"suggestions":["Role 1","Role 2","Role 3","Role 4","Role 5"],"rationale":"one sentence explaining why these roles fit this project"}
+
+Choose from roles typical for this type of project. Max 6 suggestions. Do not include Project Manager.`
+    }], 400)
+      .then(raw => {
+        try {
+          const parsed = safeParseJSON(raw);
+          setAiRoleSuggestions(parsed.suggestions || []);
+        } catch(e) { setAiRoleSuggestions([]); }
+      })
+      .catch(() => setAiRoleSuggestions([]))
+      .finally(() => { setRolesAiLoading(false); setAiStatus(""); });
+  }, [showRolePopup]);
 
   const confirmRoles = async () => {
     if (!selectedRoles.length) return;
@@ -1061,49 +1144,160 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
       {/* ── Role Selection Popup ── */}
       {showRolePopup && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:300,
-          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          display:"flex", alignItems:"center", justifyContent:"center", padding:"16px" }}>
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
-            padding:"24px 28px", maxWidth:520, width:"92%", maxHeight:"80vh",
+            width:"100%", maxWidth:640, maxHeight:"88vh",
             display:"flex", flexDirection:"column", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
-            <div style={{ fontSize:15, fontWeight:700, color:C.sage, marginBottom:4 }}>
-              Who's on your team?
+
+            {/* Header */}
+            <div style={{ padding:"20px 24px 14px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+              <div style={{ fontSize:15, fontWeight:700, color:C.sage, marginBottom:4 }}>Who's on your team?</div>
+              <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>
+                Select all roles involved. One team member slot is created per role — you can add more people in the Team sheet.
+              </div>
             </div>
-            <div style={{ fontSize:12, color:C.muted, marginBottom:16, lineHeight:1.5 }}>
-              Select the roles involved in this project. One team member will be generated per role — you can add more in the Team sheet.
-            </div>
-            <div style={{ flex:1, overflowY:"auto", display:"flex", flexWrap:"wrap", gap:8, marginBottom:18, alignContent:"flex-start" }}>
-              {ALL_ROLES.map(role => {
-                const sel = selectedRoles.includes(role) || role === "Project Manager";
-                const locked = role === "Project Manager";
-                return (
-                  <button key={role} onClick={() => !locked && toggleRole(role)}
-                    style={{ padding:"7px 14px", borderRadius:20, fontSize:11, fontWeight:600,
-                      border:`1px solid ${sel?C.accentL:C.border}`,
-                      background:sel?C.accentL+"22":"none",
-                      color:sel?C.accentL:C.muted,
-                      cursor:locked?"default":"pointer",
-                      opacity:locked?0.7:1,
-                      transition:"all .15s" }}>
-                    {locked ? "🔒 " : sel ? "✓ " : "+ "}{role}
+
+            {/* Scrollable body */}
+            <div style={{ flex:1, overflowY:"auto", padding:"14px 24px" }}>
+
+              {/* AI Suggestions */}
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:10, fontWeight:700, color:C.accentL, textTransform:"uppercase",
+                  letterSpacing:".5px", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
+                  <span style={{ width:6, height:6, borderRadius:"50%", background:C.accentL,
+                    display:"inline-block", animation: rolesAiLoading?"pulse 1.2s ease-in-out infinite":"none" }}/>
+                  {rolesAiLoading ? "AI analysing your project…" : aiRoleSuggestions.length > 0 ? "✨ Suggested for this project" : "✨ AI Suggestions"}
+                </div>
+                {rolesAiLoading ? (
+                  <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", padding:"6px 0" }}>
+                    Analysing project context…
+                  </div>
+                ) : aiRoleSuggestions.length > 0 ? (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+                    {aiRoleSuggestions.map(role => {
+                      const sel = selectedRoles.includes(role);
+                      return (
+                        <button key={role} onClick={() => toggleRole(role)}
+                          style={{ padding:"6px 13px", borderRadius:20, fontSize:11, fontWeight:600,
+                            border:`1px solid ${sel ? C.accentL : C.accentL+"66"}`,
+                            background: sel ? C.accentL+"33" : C.accentL+"11",
+                            color: sel ? C.accentL : C.dim,
+                            cursor:"pointer", transition:"all .15s" }}>
+                          {sel ? "✓ " : "✨ "}{role}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:11, color:C.muted, fontStyle:"italic" }}>
+                    Upload a document or enter project details to get AI role suggestions.
+                  </div>
+                )}
+              </div>
+
+              {/* Project Manager — always locked */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                  letterSpacing:".5px", marginBottom:8 }}>Always Included</div>
+                <div style={{ display:"inline-flex", alignItems:"center", padding:"6px 13px",
+                  borderRadius:20, fontSize:11, fontWeight:600, border:`1px solid ${C.accentL}`,
+                  background:C.accentL+"22", color:C.accentL }}>
+                  🔒 Project Manager
+                </div>
+              </div>
+
+              {/* Categorised role groups */}
+              {ROLE_GROUPS.map(group => (
+                <div key={group.label} style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                    letterSpacing:".5px", marginBottom:8 }}>{group.label}</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {group.roles.map(role => {
+                      const sel = selectedRoles.includes(role);
+                      return (
+                        <button key={role} onClick={() => toggleRole(role)}
+                          style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontWeight:600,
+                            border:`1px solid ${sel ? C.accentL : C.border}`,
+                            background: sel ? C.accentL+"22" : "none",
+                            color: sel ? C.accentL : C.muted,
+                            cursor:"pointer", transition:"all .15s" }}>
+                          {sel ? "✓ " : "+ "}{role}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Custom roles */}
+              {customRoles.length > 0 && (
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                    letterSpacing:".5px", marginBottom:8 }}>Your Custom Roles</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {customRoles.map(role => {
+                      const sel = selectedRoles.includes(role);
+                      return (
+                        <button key={role} onClick={() => toggleRole(role)}
+                          style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontWeight:600,
+                            border:`1px solid ${sel ? C.milestone : C.border}`,
+                            background: sel ? C.milestone+"22" : "none",
+                            color: sel ? C.milestone : C.muted,
+                            cursor:"pointer", transition:"all .15s" }}>
+                          {sel ? "✓ " : "+ "}{role}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Add custom role */}
+              <div style={{ marginBottom:4 }}>
+                <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                  letterSpacing:".5px", marginBottom:8 }}>Add a Role Not Listed</div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <input value={customRoleInput} onChange={e => setCustomRoleInput(e.target.value)}
+                    onKeyDown={e => e.key==="Enter" && addCustomRole()}
+                    placeholder="e.g. Community Health Worker, Watershed Engineer…"
+                    style={{ flex:1, background:C.surface2, border:`1px solid ${C.border}`,
+                      borderRadius:5, color:C.sage, fontSize:11, padding:"7px 10px",
+                      outline:"none", fontFamily:"inherit" }}/>
+                  <button onClick={addCustomRole} disabled={!customRoleInput.trim()}
+                    style={{ padding:"7px 14px", background: customRoleInput.trim()?C.accent:"#1F4D34",
+                      border:"none", borderRadius:5, color:"#fff", fontSize:11,
+                      fontWeight:700, cursor: customRoleInput.trim()?"pointer":"not-allowed" }}>
+                    Add
                   </button>
-                );
-              })}
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:14 }}>
-              {selectedRoles.length + 1} role{selectedRoles.length !== 0 ? "s" : ""} selected
-              {selectedRoles.length > 0 && ` — ${["Project Manager",...selectedRoles].join(", ")}`}
-            </div>
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={() => setShowRolePopup(false)}
-                style={{ flex:1, padding:"9px", background:"none", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>
-                Cancel
-              </button>
-              <button onClick={confirmRoles}
-                style={{ flex:2, padding:"9px", background:C.accent, border:"none",
-                  borderRadius:6, color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                Confirm Roles & Enter Setup →
-              </button>
+
+            {/* Footer */}
+            <div style={{ padding:"14px 24px", borderTop:`1px solid ${C.border}`, flexShrink:0 }}>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>
+                <strong style={{ color:C.accentL }}>{selectedRoles.length + 1}</strong> role{selectedRoles.length !== 0 ? "s" : ""} selected
+                {selectedRoles.length > 0 && (
+                  <span style={{ color:C.dim }}> — Project Manager
+                    {selectedRoles.slice(0,4).map(r => `, ${r}`)}
+                    {selectedRoles.length > 4 ? ` +${selectedRoles.length - 4} more` : ""}
+                  </span>
+                )}
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={() => setShowRolePopup(false)}
+                  style={{ flex:1, padding:"10px", background:"none", border:`1px solid ${C.border}`,
+                    borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>
+                  Cancel
+                </button>
+                <button onClick={confirmRoles} disabled={selectedRoles.length === 0}
+                  style={{ flex:2, padding:"10px",
+                    background: selectedRoles.length > 0 ? C.accent : "#1F4D34",
+                    border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700,
+                    cursor: selectedRoles.length > 0 ? "pointer" : "not-allowed" }}>
+                  Confirm {selectedRoles.length + 1} Roles & Begin Setup →
+                </button>
+              </div>
             </div>
           </div>
         </div>
