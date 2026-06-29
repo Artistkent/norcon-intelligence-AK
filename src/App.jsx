@@ -85,9 +85,9 @@ export default function App() {
 
   // ── Sheet handlers (passed into ProjectSetup) ──────────────────────────────
   const handleSheetUpdate = useCallback((sheetId, data, status, tierOverride) => {
-    // Special key "__tier__" — writes chosen tier into state
+    // Special key "__tier__" — writes chosen tier into state (null resets to tier selection)
     if (sheetId === "__tier__") {
-      setState(prev => ({ ...prev, projectTier: tierOverride, activeLayer:"setup" }));
+      setState(prev => ({ ...prev, projectTier: tierOverride ?? null, activeLayer:"setup" }));
       return;
     }
     // Special key "__projectMeta__" — writes project name and code into state.project

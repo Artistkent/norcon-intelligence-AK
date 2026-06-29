@@ -133,37 +133,69 @@ async function callExtract(messages, maxTokens = 2000) {
 }
 
 // ── Tier selection screen ────────────────────────────────────────────────────
-function TierSelect({ onSelect }) {
+function TierSelect({ onSelect, onBack }) {
   return (
-    <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center",
-      background:C.bg, padding:32 }}>
-      <div style={{ maxWidth:560, width:"100%" }}>
-        <div style={{ fontSize:22, fontWeight:700, color:C.sage, marginBottom:6, textAlign:"center" }}>
-          🏗️ NorCon Project Setup
-        </div>
-        <div style={{ fontSize:13, color:C.muted, marginBottom:32, textAlign:"center", lineHeight:1.6 }}>
-          Choose the governance level that fits your project. This determines which tools and modules are available.
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-          {Object.entries(TIERS).map(([key, tier]) => (
-            <button key={key} onClick={() => onSelect(key)}
-              style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
-                padding:"24px 20px", cursor:"pointer", textAlign:"left", transition:"border-color .15s" }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = C.accentL}
-              onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
-              <div style={{ fontSize:28, marginBottom:10 }}>{tier.icon}</div>
-              <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:6 }}>{tier.label}</div>
-              <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:14 }}>{tier.desc}</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                {tier.sheets.map(id => (
-                  <div key={id} style={{ fontSize:11, color:C.dim, display:"flex", alignItems:"center", gap:6 }}>
-                    <span style={{ color:C.accentL, fontSize:9 }}>✓</span>
-                    {SHEET_LABELS[id]}
-                  </div>
-                ))}
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.bg }}>
+
+      {/* Step nav bar */}
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 24px",
+        borderBottom:`1px solid ${C.border}`, background:C.surface, flexShrink:0 }}>
+        <button onClick={onBack}
+          style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px",
+            background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+            color:C.muted, fontSize:12, cursor:"pointer" }}>
+          ← Back
+        </button>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
+          {["Welcome","Tier","Project Details"].map((label, i) => (
+            <div key={label} style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                <div style={{ width:22, height:22, borderRadius:"50%", fontSize:10, fontWeight:700,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  background: i === 1 ? C.accent : i < 1 ? C.accentL+"33" : C.surface2,
+                  color: i === 1 ? "#fff" : i < 1 ? C.accentL : C.muted,
+                  border: `1px solid ${i === 1 ? C.accent : i < 1 ? C.accentL : C.border}` }}>
+                  {i < 1 ? "✓" : i + 1}
+                </div>
+                <span style={{ fontSize:11, color: i === 1 ? C.sage : i < 1 ? C.accentL : C.muted,
+                  fontWeight: i === 1 ? 700 : 400 }}>{label}</span>
               </div>
-            </button>
+              {i < 2 && <span style={{ color:C.border, fontSize:14 }}>›</span>}
+            </div>
           ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
+        <div style={{ maxWidth:560, width:"100%" }}>
+          <div style={{ fontSize:22, fontWeight:700, color:C.sage, marginBottom:6, textAlign:"center" }}>
+            🏗️ NorCon Project Setup
+          </div>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:32, textAlign:"center", lineHeight:1.6 }}>
+            Choose the governance level that fits your project. This determines which tools and modules are available.
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+            {Object.entries(TIERS).map(([key, tier]) => (
+              <button key={key} onClick={() => onSelect(key)}
+                style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
+                  padding:"24px 20px", cursor:"pointer", textAlign:"left", transition:"border-color .15s" }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = C.accentL}
+                onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
+                <div style={{ fontSize:28, marginBottom:10 }}>{tier.icon}</div>
+                <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:6 }}>{tier.label}</div>
+                <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:14 }}>{tier.desc}</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                  {tier.sheets.map(id => (
+                    <div key={id} style={{ fontSize:11, color:C.dim, display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ color:C.accentL, fontSize:9 }}>✓</span>
+                      {SHEET_LABELS[id]}
+                    </div>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -171,7 +203,7 @@ function TierSelect({ onSelect }) {
 }
 
 // ── PM Setup screen — project name, code, PM name, login code ────────────────
-function PMSetup({ tier, onConfirm }) {
+function PMSetup({ tier, onConfirm, onBack }) {
   const [projectName, setProjectName] = useState("");
   const [projectCode, setProjectCode] = useState("");
   const [pmName,      setPmName]      = useState("");
@@ -238,8 +270,39 @@ function PMSetup({ tier, onConfirm }) {
     : null;
 
   return (
-    <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center",
-      background:C.bg, padding:32, overflowY:"auto" }}>
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.bg, overflowY:"auto" }}>
+
+      {/* Step nav bar */}
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 24px",
+        borderBottom:`1px solid ${C.border}`, background:C.surface, flexShrink:0 }}>
+        <button onClick={onBack}
+          style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px",
+            background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+            color:C.muted, fontSize:12, cursor:"pointer" }}>
+          ← Back
+        </button>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
+          {["Welcome","Tier","Project Details"].map((label, i) => (
+            <div key={label} style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                <div style={{ width:22, height:22, borderRadius:"50%", fontSize:10, fontWeight:700,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  background: i === 2 ? C.accent : C.accentL+"33",
+                  color: i === 2 ? "#fff" : C.accentL,
+                  border: `1px solid ${i === 2 ? C.accent : C.accentL}` }}>
+                  {i < 2 ? "✓" : 3}
+                </div>
+                <span style={{ fontSize:11, color: i === 2 ? C.sage : C.accentL,
+                  fontWeight: i === 2 ? 700 : 400 }}>{label}</span>
+              </div>
+              {i < 2 && <span style={{ color:C.border, fontSize:14 }}>›</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
       <div style={{ maxWidth:480, width:"100%" }}>
 
         {/* Header */}
@@ -366,8 +429,8 @@ function PMSetup({ tier, onConfirm }) {
           {" · "}{tierCfg.sheets.length} sheets active
           {" · "}<span style={{ color:C.accentL }}>PM · Full Access</span>
         </div>
-      </div>
-    </div>
+      </div>{/* end content centering div */}
+    </div>{/* end outer flex column */}
   );
 }
 export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onLaunch, onLogout, onL1Complete }) {
@@ -961,14 +1024,17 @@ Choose from roles typical for this type of project. Max 6 suggestions. Do not in
     // Kick off Q&A now that roles are known
     if (qaMessages.length === 0) askQuestion(0);
   };
-  if (!tier) return <TierSelect onSelect={(t) => onSheetUpdate("__tier__", {}, "empty", t)} />;
+  if (!tier) return <TierSelect
+    onSelect={(t) => onSheetUpdate("__tier__", {}, "empty", t)}
+    onBack={onLogout}/>;
 
-  // ── After tier: PM name + login code screen ────────────────────────────────
+  // ── After tier: PM name + project details screen ──────────────────────────
   const pmAlreadySet = (l2?.loginCodes||[]).some(m => m.isPM || m.role === "Project Manager");
   if (!pmAlreadySet && !isExisting) {
     return (
       <PMSetup
         tier={tier}
+        onBack={() => onSheetUpdate("__tier__", {}, "empty", null)}
         onConfirm={({ projectName, projectCode, pmName, loginCode }) => {
           // Write project meta
           onSheetUpdate("__projectMeta__", {}, "empty", { projectName, projectCode });
