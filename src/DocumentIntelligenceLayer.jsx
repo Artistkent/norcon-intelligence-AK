@@ -297,7 +297,11 @@ export default function DocumentIntelligenceLayer({ onSendToPersonalisation, onS
     await sleep(300); setStage("classify"); setLoadMsg("Classifying project elements...");
     await sleep(200); setStage("map"); setLoadMsg("Mapping elements with governance metadata...");
 
-    const maxDoc = docText.length > 14000 ? docText.slice(0, 14000) + "\n[... truncated ...]" : docText;
+    // FIX: reduced to 12000 chars; replaced "[... truncated ...]" marker which
+    // the AI sometimes embedded in JSON strings, corrupting parse at that boundary.
+    const maxDoc = docText.length > 12000
+      ? docText.slice(0, 12000) + "\\n<<<DOCUMENT_TRUNCATED_HERE>>>"
+      : docText;
     const hint   = docType !== "auto" ? "Document type: " + docType + ". " : "";
     const pn     = projName ? 'Project name: "' + projName + '". ' : "";
 
@@ -522,11 +526,21 @@ DOCUMENT:
 
       const data  = await res.json();
       const raw   = (data.content || []).map(b => b.text || "").join("");
-      const clean = raw.replace(/^```[a-z]*\n?/, "").replace(/```$/, "").trim();
+      const clean = raw.replace(/^```[a-z]*\\n?/, "").replace(/```$/, "").trim();
       const si    = clean.indexOf("{");
-      const ei    = clean.lastIndexOf("}");
-      if(si === -1 || ei === -1) throw new Error("No JSON in response: " + raw.slice(0, 300));
-      const parsed = JSON.parse(clean.slice(si, ei + 1));
+      if(si === -1) throw new Error("No JSON in response: " + raw.slice(0, 300));
+
+      // FIX: Walk backwards from last } until JSON.parse succeeds.
+      // Handles mid-response truncation from max_tokens hitting the limit.
+      let parsed = null;
+      let srch = clean.slice(si);
+      for (let i = 0; i < 10 && !parsed; i++) {
+        const ci = srch.lastIndexOf("}");
+        if (ci === -1) break;
+        try { parsed = JSON.parse(srch.slice(0, ci + 1)); }
+        catch { srch = srch.slice(0, ci); }
+      }
+      if (!parsed) throw new Error("Could not parse AI response as JSON. Try pasting a shorter section of the document.");
 
       const els = (parsed.elements || []).map(el => ({ ...el, _state: "pending" }));
       setCharter(parsed.charter || null);
