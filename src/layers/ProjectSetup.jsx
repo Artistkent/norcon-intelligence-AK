@@ -1073,6 +1073,42 @@ Choose from roles typical for this type of project. Max 6 suggestions. Do not in
                 onUpdate={(data, status) => {
                   setDirtySheet(true);
                   onSheetUpdate(activeSheet, data, status);
+                  // ── Charter → Team sync ──────────────────────────────────
+                  // When PM name is set/changed in Sheet 01, mirror it into
+                  // the Project Manager row in Sheet 02.
+                  // PM edit on Sheet 02 always wins — only sync if the team
+                  // row name is still blank or matches the previous charter value.
+                  if (activeSheet === "01" && data?.charter?.projectManager !== undefined) {
+                    const newPMName  = data.charter.projectManager;
+                    const oldPMName  = sheets["01"]?.data?.charter?.projectManager || "";
+                    const teamMembers = sheets["02"]?.data?.teamMembers || [];
+                    const pmIdx      = teamMembers.findIndex(
+                      m => m.isPM || m.role === "Project Manager"
+                    );
+                    if (pmIdx !== -1) {
+                      const pmRow = teamMembers[pmIdx];
+                      // Only overwrite if team name is blank or still equals old charter value
+                      const canSync = !pmRow.name || pmRow.name === oldPMName;
+                      if (canSync && newPMName) {
+                        const updatedTeam = teamMembers.map((m, i) =>
+                          i === pmIdx ? { ...m, name: newPMName } : m
+                        );
+                        onSheetUpdate("02", { teamMembers: updatedTeam }, sheets["02"]?.status || "ai-draft");
+                      }
+                    }
+                  }
+                  // ── Team PM name → Charter sync ──────────────────────────
+                  // When PM name is edited directly in Sheet 02, mirror it
+                  // back into charter.projectManager if charter field is blank
+                  // or still matches the old team value.
+                  if (activeSheet === "02" && data?.teamMembers) {
+                    const pmRow      = data.teamMembers.find(m => m.isPM || m.role === "Project Manager");
+                    const charter    = sheets["01"]?.data?.charter || {};
+                    const oldTeamPM  = sheets["02"]?.data?.teamMembers?.find(m => m.isPM || m.role === "Project Manager")?.name || "";
+                    if (pmRow?.name && (!charter.projectManager || charter.projectManager === oldTeamPM)) {
+                      onSheetUpdate("01", { charter: { ...charter, projectManager: pmRow.name } }, sheets["01"]?.status || "in-progress");
+                    }
+                  }
                 }}/>
             )}
           </div>
