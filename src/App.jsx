@@ -66,9 +66,23 @@ export default function App() {
 
   // ── Sheet handlers (passed into ProjectSetup) ──────────────────────────────
   const handleSheetUpdate = useCallback((sheetId, data, status, tierOverride) => {
-    // Special key "__tier__" is used by TierSelect to write the chosen tier into state
+    // Special key "__tier__" — writes chosen tier into state
     if (sheetId === "__tier__") {
       setState(prev => ({ ...prev, projectTier: tierOverride, activeLayer:"setup" }));
+      return;
+    }
+    // Special key "__loginCode__" — adds PM login code into l2.loginCodes
+    if (sheetId === "__loginCode__") {
+      setState(prev => ({
+        ...prev,
+        l2: {
+          ...prev.l2,
+          loginCodes: [
+            ...(prev.l2.loginCodes || []).filter(m => !m.isPM),
+            tierOverride,
+          ],
+        },
+      }));
       return;
     }
     setState(prev => ({
@@ -241,7 +255,13 @@ export default function App() {
                 </div>
               </>
             )}
-            <div style={{ marginLeft:"auto", display:"flex", gap:4, alignItems:"center" }}>
+            <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center" }}>
+              {/* Back — navigate to previous page within the app */}
+              <button onClick={() => window.history.back()}
+                style={{ padding:"5px 10px", fontSize:11, borderRadius:5,
+                  border:`1px solid ${C.border}`, background:"none", color:C.muted, cursor:"pointer" }}>
+                ← Back
+              </button>
               {/* Show L3 button once enough sheets are saved */}
               {l3Unlocked && (
                 <button onClick={handleGoToL3}
