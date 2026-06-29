@@ -178,23 +178,34 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
 
   const [activeSheet,   setActiveSheet]   = useState("01");
   const [dirtySheet,    setDirtySheet]    = useState(false);
-  const [savingPrompt,  setSavingPrompt]  = useState(null); // target sheet id to nav to after save
+  const [savingPrompt,  setSavingPrompt]  = useState(null);
+
+  // ── AI status indicator ───────────────────────────────────────────────────
+  const [aiStatus,      setAiStatus]      = useState("");
 
   // ── Document intelligence state ───────────────────────────────────────────
-  const [uploadMode,    setUploadMode]    = useState("file"); // "file" | "text"
+  const [uploadMode,    setUploadMode]    = useState("file");
   const [pasteText,     setPasteText]     = useState("");
   const [extracting,    setExtracting]    = useState(false);
   const [extractMsg,    setExtractMsg]    = useState("");
-  const [fileList,      setFileList]      = useState([]); // uploaded file names
+  const [fileList,      setFileList]      = useState([]);
 
   // ── Q&A state ─────────────────────────────────────────────────────────────
-  const [qaMessages,    setQaMessages]    = useState([]); // { role, text, recommendation, fields, qId }
+  const [qaMessages,    setQaMessages]    = useState([]);
   const [qaInput,       setQaInput]       = useState("");
   const [qaLoading,     setQaLoading]     = useState(false);
   const [currentQIdx,   setCurrentQIdx]   = useState(0);
   const qaBottomRef = useRef(null);
 
   const sheets   = l2?.sheets || {};
+
+  // ── Blur / onboarding state — derived AFTER sheets is declared ────────────
+  // isExisting: project already has data (returning login), blur never shown
+  const isExisting = Object.values(sheets).some(s => s.status !== "empty") ||
+                     (l2?.loginCodes||[]).length > 0;
+  const [blurLifted,    setBlurLifted]    = useState(() => isExisting);
+  const [showRolePopup, setShowRolePopup] = useState(false);
+  const [selectedRoles, setSelectedRoles] = useState([]);
   const questions = tierCfg?.questions || [];
 
   // Auto-scroll Q&A to bottom
@@ -212,6 +223,7 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
     if (!tierCfg || idx >= questions.length) return;
     const q = questions[idx];
     setQaLoading(true);
+    setAiStatus(`Preparing question ${idx + 1} of ${questions.length}…`);
     try {
       const context = buildSheetContext();
       const prompt = `You are a project management assistant helping set up a ${tierCfg.label} project.
@@ -244,6 +256,7 @@ Respond in JSON only, no markdown fences, no preamble:
       }]);
     }
     setQaLoading(false);
+    setAiStatus("");
     setCurrentQIdx(idx);
   };
 
@@ -432,6 +445,7 @@ Return only the fields that have data:
 
     for (const file of files) {
       setExtractMsg(`Processing ${file.name}…`);
+      setAiStatus(`Reading ${file.name}…`);
       try {
         let text = "";
         if (file.name.endsWith(".docx")) {
@@ -451,6 +465,7 @@ Return only the fields that have data:
       }
     }
     setExtracting(false);
+    setAiStatus("");
     setExtractMsg("✓ Extraction complete. Recommendations applied to sheets.");
     e.target.value = "";
   };
@@ -470,6 +485,7 @@ Return only the fields that have data:
   };
 
   const runExtraction = async (text, source) => {
+    setAiStatus(`Extracting project data from ${source}…`);
     // Chunk large documents to avoid token limits
     const MAX_CHARS = 12000;
     const chunk = text.slice(0, MAX_CHARS);
@@ -605,7 +621,64 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
     setDirtySheet(false);
   };
 
-  // ── If no tier chosen yet, show tier selection ────────────────────────────
+  // ── Role popup ─────────────────────────────────────────────────────────────
+  const ALL_ROLES = [
+    "Project Manager","Assistant Project Manager","Project Sponsor",
+    "Project Scheduler","Project Controller","Risk Owner",
+    "Communications Lead","Technical Lead","Research Coordinator",
+    "Marketing Lead","Document Controller","Finance Lead",
+    "Stakeholder Liaison","Quality Assurance Lead","IT Lead",
+    "Legal Advisor","Procurement Lead","Change Manager",
+  ];
+
+  const toggleRole = (role) => {
+    setSelectedRoles(prev =>
+      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+    );
+  };
+
+  const confirmRoles = async () => {
+    if (!selectedRoles.length) return;
+    setShowRolePopup(false);
+    setBlurLifted(true);
+    setAiStatus("Generating team structure from selected roles…");
+
+    // Build team members from selected roles — PM always first
+    const ordered = ["Project Manager", ...selectedRoles.filter(r => r !== "Project Manager")];
+    const { generateLoginCode } = await import("../store/appStore.js");
+    const existingCodes = (l2?.loginCodes || []).map(m => m.loginCode);
+    const newMembers = ordered.map((role, i) => {
+      const code = generateLoginCode(project?.code || "NC", [...existingCodes]);
+      existingCodes.push(code);
+      return {
+        _id: `TM-${String(i+1).padStart(3,"0")}`,
+        loginCode: code,
+        name: "",
+        role,
+        deliveryRole: "",
+        availability: "",
+        location: "",
+        responsibilities: "",
+        isPM: role === "Project Manager",
+      };
+    });
+
+    // Write to sheet 02
+    const existingTeam = sheets["02"]?.data?.teamMembers || [];
+    if (existingTeam.length === 0) {
+      onSheetUpdate("02", { teamMembers: newMembers }, "ai-draft");
+    }
+
+    // Write role list to charter as a hint
+    const existingCharter = sheets["01"]?.data?.charter || {};
+    if (!existingCharter.teamRoles) {
+      onSheetUpdate("01", { charter: { ...existingCharter, teamRoles: ordered.join(", ") } }, "ai-draft");
+    }
+
+    setAiStatus("");
+    // Kick off Q&A now that roles are known
+    if (qaMessages.length === 0) askQuestion(0);
+  };
   if (!tier) return <TierSelect onSelect={(t) => onSheetUpdate("__tier__", {}, "empty", t)} />;
 
   const activeSheets  = tierCfg.sheets;
@@ -645,7 +718,7 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
       <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
 
         {/* ════════ LEFT SIDEBAR ════════ */}
-        <div style={{ width:260, minWidth:240, borderRight:`1px solid ${C.border}`,
+        <div style={{ width:380, minWidth:360, borderRight:`1px solid ${C.border}`,
           display:"flex", flexDirection:"column", overflow:"hidden", flexShrink:0, background:C.surface }}>
 
           {/* Tier badge */}
@@ -831,7 +904,21 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
         </div>
 
         {/* ════════ MAIN AREA — L2 Sheets ════════ */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
+
+          {/* ── AI Status bar — always visible, passive when idle ── */}
+          <div style={{ background: aiStatus ? "rgba(58,153,98,0.12)" : "rgba(18,46,30,0.6)",
+            borderBottom:`1px solid ${aiStatus ? C.accentL+"44" : C.border}`,
+            padding:"4px 16px", fontSize:10,
+            color: aiStatus ? C.accentL : C.muted,
+            display:"flex", alignItems:"center", gap:8, flexShrink:0,
+            transition:"all .3s", minHeight:24 }}>
+            <div style={{ width:6, height:6, borderRadius:"50%",
+              background: aiStatus ? C.accentL : C.muted,
+              animation: aiStatus ? "pulse 1.2s ease-in-out infinite" : "none",
+              flexShrink:0, transition:"background .3s" }}/>
+            {aiStatus || "AI assistant ready"}
+          </div>
 
           {/* Sheet tabs */}
           <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`,
@@ -879,7 +966,8 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
                 Save Changes
               </button>
             )}
-            {l3Unlocked && (
+            {/* Launch only visible for existing projects */}
+            {isExisting && (
               <button onClick={onLaunch}
                 style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5,
                   color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
@@ -905,6 +993,40 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
                 }}/>
             )}
           </div>
+
+          {/* ── Blur overlay — new projects only, lifts after role selection ── */}
+          {/* position:absolute covers only this right panel div, not the left sidebar */}
+          {!blurLifted && (
+            <div style={{ position:"absolute", inset:0, zIndex:10,
+              backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)",
+              background:"rgba(13,43,27,0.60)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              pointerEvents:"all" }}>
+              <div onClick={e => e.stopPropagation()}
+                style={{ background:C.surface, border:`1px solid ${C.accentL}44`, borderRadius:12,
+                padding:"28px 32px", maxWidth:380, width:"90%", textAlign:"center",
+                boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
+                <div style={{ fontSize:28, marginBottom:12 }}>🏗️</div>
+                <div style={{ fontSize:15, fontWeight:700, color:C.sage, marginBottom:8 }}>
+                  Start your Project Setup
+                </div>
+                <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:8 }}>
+                  Use the left panel to upload documents or let AI guide you through setup.
+                </div>
+                <div style={{ fontSize:11, color:C.dim, lineHeight:1.5, marginBottom:20,
+                  background:C.surface2, borderRadius:6, padding:"8px 12px",
+                  border:`1px solid ${C.border}` }}>
+                  First, tell us who's on your team — this will pre-populate the Team and Charter sheets.
+                </div>
+                <button onClick={() => setShowRolePopup(true)}
+                  style={{ width:"100%", padding:"12px", background:C.accent, border:"none",
+                    borderRadius:7, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
+                    boxShadow:`0 4px 16px ${C.accent}44` }}>
+                  Select Team Roles to Begin →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -930,6 +1052,57 @@ Return this exact structure (omit arrays that have no data, do not leave trailin
                 style={{ padding:"9px 14px", background:"none", border:`1px solid ${C.risk}22`,
                   borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>
                 Discard & Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Role Selection Popup ── */}
+      {showRolePopup && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:300,
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
+            padding:"24px 28px", maxWidth:520, width:"92%", maxHeight:"80vh",
+            display:"flex", flexDirection:"column", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
+            <div style={{ fontSize:15, fontWeight:700, color:C.sage, marginBottom:4 }}>
+              Who's on your team?
+            </div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:16, lineHeight:1.5 }}>
+              Select the roles involved in this project. One team member will be generated per role — you can add more in the Team sheet.
+            </div>
+            <div style={{ flex:1, overflowY:"auto", display:"flex", flexWrap:"wrap", gap:8, marginBottom:18, alignContent:"flex-start" }}>
+              {ALL_ROLES.map(role => {
+                const sel = selectedRoles.includes(role) || role === "Project Manager";
+                const locked = role === "Project Manager";
+                return (
+                  <button key={role} onClick={() => !locked && toggleRole(role)}
+                    style={{ padding:"7px 14px", borderRadius:20, fontSize:11, fontWeight:600,
+                      border:`1px solid ${sel?C.accentL:C.border}`,
+                      background:sel?C.accentL+"22":"none",
+                      color:sel?C.accentL:C.muted,
+                      cursor:locked?"default":"pointer",
+                      opacity:locked?0.7:1,
+                      transition:"all .15s" }}>
+                    {locked ? "🔒 " : sel ? "✓ " : "+ "}{role}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:14 }}>
+              {selectedRoles.length + 1} role{selectedRoles.length !== 0 ? "s" : ""} selected
+              {selectedRoles.length > 0 && ` — ${["Project Manager",...selectedRoles].join(", ")}`}
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => setShowRolePopup(false)}
+                style={{ flex:1, padding:"9px", background:"none", border:`1px solid ${C.border}`,
+                  borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>
+                Cancel
+              </button>
+              <button onClick={confirmRoles}
+                style={{ flex:2, padding:"9px", background:C.accent, border:"none",
+                  borderRadius:6, color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                Confirm Roles & Enter Setup →
               </button>
             </div>
           </div>
