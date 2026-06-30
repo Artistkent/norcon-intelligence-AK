@@ -365,6 +365,226 @@ function PMSetup({ tier, onConfirm, onBack }) {
   );
 }
 
+// ── Review Extracted Data — optional modal, tables, edits save instantly ────
+function ReviewModal({ sheets, tier, onUpdate, onClose }) {
+  const charter = sheets["01"]?.data?.charter || {};
+  const team    = sheets["02"]?.data?.teamMembers || [];
+  const acts    = sheets["03"]?.data?.activities || [];
+  const miles   = sheets["03"]?.data?.milestones || [];
+  const risks   = sheets["05"]?.data?.risks || [];
+  const stakeholders = sheets["08"]?.data?.stakeholders || [];
+  const benefits      = sheets["07"]?.data?.deliverables || [];
+
+  const cell = { background:"transparent", border:"none", color:C.sage, fontSize:11,
+    padding:"6px 8px", outline:"none", width:"100%", fontFamily:"inherit" };
+  const th = { padding:"7px 8px", textAlign:"left", fontWeight:700, fontSize:9, color:C.muted,
+    textTransform:"uppercase", letterSpacing:".4px", borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
+  const td = { borderBottom:`1px solid ${C.border}22` };
+
+  const Section = ({ title, count, children }) => (
+    <div style={{ marginBottom:24 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.sage }}>{title}</div>
+        <div style={{ fontSize:10, color:C.accentL, background:C.accentL+"22", padding:"1px 8px", borderRadius:10 }}>{count}</div>
+      </div>
+      {children}
+    </div>
+  );
+
+  const updateCharterField = (key, value) => onUpdate("01", { charter:{...charter,[key]:value} }, "in-progress");
+  const updateTeamField = (idx, field, value) => {
+    const next = team.map((m,i)=>i===idx?{...m,[field]:value}:m);
+    onUpdate("02", { teamMembers: next }, "in-progress");
+  };
+  const updateActField = (idx, field, value) => {
+    const next = acts.map((a,i)=>i===idx?{...a,[field]:value}:a);
+    onUpdate("03", { activities: next, milestones: miles }, "in-progress");
+  };
+  const removeAct = (idx) => onUpdate("03", { activities: acts.filter((_,i)=>i!==idx), milestones: miles }, "in-progress");
+  const updateMileField = (idx, field, value) => {
+    const next = miles.map((m,i)=>i===idx?{...m,[field]:value}:m);
+    onUpdate("03", { activities: acts, milestones: next }, "in-progress");
+  };
+  const removeMile = (idx) => onUpdate("03", { activities: acts, milestones: miles.filter((_,i)=>i!==idx) }, "in-progress");
+  const updateRiskField = (idx, field, value) => {
+    const next = risks.map((r,i)=>i===idx?{...r,[field]:value}:r);
+    onUpdate("05", { risks: next }, "in-progress");
+  };
+  const removeRisk = (idx) => onUpdate("05", { risks: risks.filter((_,i)=>i!==idx) }, "in-progress");
+  const updateSHField = (idx, field, value) => {
+    const next = stakeholders.map((s,i)=>i===idx?{...s,[field]:value}:s);
+    onUpdate("08", { stakeholders: next }, "in-progress");
+  };
+  const removeSH = (idx) => onUpdate("08", { stakeholders: stakeholders.filter((_,i)=>i!==idx) }, "in-progress");
+  const updateBenField = (idx, field, value) => {
+    const next = benefits.map((b,i)=>i===idx?{...b,[field]:value}:b);
+    onUpdate("07", { deliverables: next }, "in-progress");
+  };
+  const removeBen = (idx) => onUpdate("07", { deliverables: benefits.filter((_,i)=>i!==idx) }, "in-progress");
+
+  const overviewFields = [
+    ["projectName","Project Name"], ["projectCode","Project Code"],
+    ["projectManager","Project Manager"], ["projectSponsor","Project Sponsor"],
+    ["organisation","Organisation"], ["startDate","Start Date"], ["endDate","End Date"],
+    ["budget","Budget"],
+  ];
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:400,
+      display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12,
+        width:"100%", maxWidth:1000, maxHeight:"90vh", display:"flex", flexDirection:"column",
+        boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
+
+        <div style={{ padding:"18px 24px", borderBottom:`1px solid ${C.border}`, display:"flex",
+          alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.sage }}>Review Extracted Data</div>
+            <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Everything gathered so far — edit directly, changes save instantly.</div>
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+            color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
+        </div>
+
+        <div style={{ flex:1, overflowY:"auto", padding:"20px 24px" }}>
+
+          <Section title="Project Overview" count={overviewFields.filter(([k])=>charter[k]).length+"/"+overviewFields.length}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, background:C.border, borderRadius:6, overflow:"hidden" }}>
+              {overviewFields.map(([key,label]) => (
+                <div key={key} style={{ background:C.surface, display:"flex", alignItems:"center" }}>
+                  <div style={{ width:140, flexShrink:0, fontSize:10, color:C.muted, padding:"8px 10px", borderRight:`1px solid ${C.border}` }}>{label}</div>
+                  <input style={cell} value={charter[key]||""} onChange={e=>updateCharterField(key,e.target.value)} placeholder="—"/>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop:8 }}>
+              <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>Purpose</div>
+              <textarea value={charter.purpose||""} onChange={e=>updateCharterField("purpose",e.target.value)}
+                style={{ ...cell, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, minHeight:50, resize:"none", padding:"8px 10px" }}/>
+            </div>
+          </Section>
+
+          <Section title="Team" count={team.length}>
+            {team.length===0 ? <EmptyNote/> : (
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                <thead><tr>{["Name","Role","Login Code",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {team.map((m,i)=>(
+                    <tr key={i} style={td}>
+                      <td><input style={cell} value={m.name||""} onChange={e=>updateTeamField(i,"name",e.target.value)} placeholder="Name…"/></td>
+                      <td><input style={cell} value={m.role||""} onChange={e=>updateTeamField(i,"role",e.target.value)}/></td>
+                      <td style={{ fontFamily:"monospace", color:C.accentL, fontSize:10, padding:"6px 8px" }}>{m.loginCode}</td>
+                      <td></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          <Section title="Schedule — Activities" count={acts.length}>
+            {acts.length===0 ? <EmptyNote/> : (
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                <thead><tr>{["Activity","Phase","Start","End",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {acts.map((a,i)=>(
+                    <tr key={i} style={td}>
+                      <td><input style={cell} value={a.name||""} onChange={e=>updateActField(i,"name",e.target.value)}/></td>
+                      <td><input style={cell} value={a.phase||""} onChange={e=>updateActField(i,"phase",e.target.value)}/></td>
+                      <td><input type="date" style={cell} value={a.startDate||""} onChange={e=>updateActField(i,"startDate",e.target.value)}/></td>
+                      <td><input type="date" style={cell} value={a.targetDate||""} onChange={e=>updateActField(i,"targetDate",e.target.value)}/></td>
+                      <td><button onClick={()=>removeAct(i)} style={{ background:"none", border:"none", color:C.risk, cursor:"pointer", fontSize:12 }}>✕</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          <Section title="Schedule — Milestones" count={miles.length}>
+            {miles.length===0 ? <EmptyNote/> : (
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                <thead><tr>{["Milestone","Phase","Target Date",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {miles.map((m,i)=>(
+                    <tr key={i} style={td}>
+                      <td><input style={cell} value={m.name||""} onChange={e=>updateMileField(i,"name",e.target.value)}/></td>
+                      <td><input style={cell} value={m.phase||""} onChange={e=>updateMileField(i,"phase",e.target.value)}/></td>
+                      <td><input type="date" style={cell} value={m.targetDate||""} onChange={e=>updateMileField(i,"targetDate",e.target.value)}/></td>
+                      <td><button onClick={()=>removeMile(i)} style={{ background:"none", border:"none", color:C.risk, cursor:"pointer", fontSize:12 }}>✕</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          <Section title="Risks" count={risks.length}>
+            {risks.length===0 ? <EmptyNote/> : (
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                <thead><tr>{["Risk","Category","Likelihood","Impact","Response",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {risks.map((r,i)=>(
+                    <tr key={i} style={td}>
+                      <td><input style={cell} value={r.name||""} onChange={e=>updateRiskField(i,"name",e.target.value)}/></td>
+                      <td><input style={cell} value={r.category||""} onChange={e=>updateRiskField(i,"category",e.target.value)}/></td>
+                      <td><input style={{...cell,width:50}} value={r.likelihood||""} onChange={e=>updateRiskField(i,"likelihood",e.target.value)}/></td>
+                      <td><input style={{...cell,width:50}} value={r.impact||""} onChange={e=>updateRiskField(i,"impact",e.target.value)}/></td>
+                      <td><input style={cell} value={r.response||""} onChange={e=>updateRiskField(i,"response",e.target.value)}/></td>
+                      <td><button onClick={()=>removeRisk(i)} style={{ background:"none", border:"none", color:C.risk, cursor:"pointer", fontSize:12 }}>✕</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          {tier === "full" && (
+            <>
+              <Section title="Stakeholders" count={stakeholders.length}>
+                {stakeholders.length===0 ? <EmptyNote/> : (
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                    <thead><tr>{["Name","Category",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {stakeholders.map((s,i)=>(
+                        <tr key={i} style={td}>
+                          <td><input style={cell} value={s.name||""} onChange={e=>updateSHField(i,"name",e.target.value)}/></td>
+                          <td><input style={cell} value={s.category||""} onChange={e=>updateSHField(i,"category",e.target.value)}/></td>
+                          <td><button onClick={()=>removeSH(i)} style={{ background:"none", border:"none", color:C.risk, cursor:"pointer", fontSize:12 }}>✕</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Section>
+
+              <Section title="Benefits" count={benefits.length}>
+                {benefits.length===0 ? <EmptyNote/> : (
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                    <thead><tr>{["Benefit","Category",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {benefits.map((b,i)=>(
+                        <tr key={i} style={td}>
+                          <td><input style={cell} value={b.name||""} onChange={e=>updateBenField(i,"name",e.target.value)}/></td>
+                          <td><input style={cell} value={b.phase||""} onChange={e=>updateBenField(i,"phase",e.target.value)}/></td>
+                          <td><button onClick={()=>removeBen(i)} style={{ background:"none", border:"none", color:C.risk, cursor:"pointer", fontSize:12 }}>✕</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Section>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function EmptyNote() {
+  return <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", padding:"8px 0" }}>Nothing here yet.</div>;
+}
+
 export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onLaunch, onLogout }) {
   const { l2, project } = state;
   const tier    = state.projectTier;
@@ -381,6 +601,7 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
   const [uploadMode, setUploadMode] = useState("file");
   const [pasteText, setPasteText] = useState("");
   const [extracting, setExtracting] = useState(false);
+  const [showReview, setShowReview] = useState(false);
 
   const wizardSheetOrder = tierCfg ? scheduleLast(WIZARD_SHEETS[tier]) : [];
   const [sheetIdx, setSheetIdx] = useState(0);
@@ -426,8 +647,22 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
 
   const currentSheetId = wizardSheetOrder[sheetIdx];
   const allClustersForSheet = CLUSTERS[currentSheetId] || [];
+
+  // Freeze which clusters are visible for this sheet the moment we arrive at it.
+  // Without this, a cluster vanishes mid-interaction the instant the PM adds their
+  // first chip/role (isFieldKnown flips true), snapping clusterIdx to a different
+  // cluster and looking like the wizard "skipped ahead" on click.
+  const [frozenVisibility, setFrozenVisibility] = useState({});
+  useEffect(() => {
+    if (!currentSheetId || frozenVisibility[currentSheetId]) return;
+    const visible = allClustersForSheet.filter(cl =>
+      cl.fields.some(f => f.optional || !isFieldKnown(f.key))
+    ).map(cl => cl.id);
+    setFrozenVisibility(prev => ({ ...prev, [currentSheetId]: visible }));
+  }, [currentSheetId]);
+
   const visibleClusters = allClustersForSheet.filter(cl =>
-    cl.fields.some(f => f.optional || !isFieldKnown(f.key))
+    (frozenVisibility[currentSheetId] || allClustersForSheet.map(c=>c.id)).includes(cl.id)
   );
   const currentCluster = visibleClusters[clusterIdx];
 
@@ -599,7 +834,10 @@ Return ONLY JSON, no markdown:
     if (clusterIdx > 0) { setClusterIdx(clusterIdx - 1); return; }
     if (sheetIdx > 0) {
       const prevSheetId = wizardSheetOrder[sheetIdx-1];
-      const prevClusters = (CLUSTERS[prevSheetId]||[]).filter(cl => cl.fields.some(f=>f.optional||!isFieldKnown(f.key)));
+      const prevAllClusters = CLUSTERS[prevSheetId] || [];
+      const prevVisibleIds = frozenVisibility[prevSheetId] ||
+        prevAllClusters.filter(cl => cl.fields.some(f=>f.optional||!isFieldKnown(f.key))).map(cl=>cl.id);
+      const prevClusters = prevAllClusters.filter(cl => prevVisibleIds.includes(cl.id));
       setSheetIdx(sheetIdx - 1);
       setClusterIdx(Math.max(0, prevClusters.length - 1));
       return;
@@ -660,6 +898,16 @@ If no clear milestones are described, return {"milestones":[]}`;
     onSheetUpdate("02", { teamMembers: existing.filter(m => m.role !== role) }, "in-progress");
     if (removed?.loginCode) onSheetUpdate("__removeLoginCode__", {}, "empty", removed.loginCode);
   };
+  const updateTeamMemberName = (role, name) => {
+    const existing = sheets["02"]?.data?.teamMembers || [];
+    const updated = existing.map(m => m.role === role ? { ...m, name } : m);
+    onSheetUpdate("02", { teamMembers: updated }, "in-progress");
+    const member = updated.find(m => m.role === role);
+    if (member?.loginCode) {
+      onSheetUpdate("__updateLoginCodeName__", {}, "empty", { loginCode: member.loginCode, name });
+    }
+  };
+  const getTeamMemberByRole = (role) => (sheets["02"]?.data?.teamMembers||[]).find(m => m.role === role);
 
   const addChipItem = (fieldKey, item) => {
     if (fieldKey === "risks") {
@@ -876,9 +1124,19 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
       <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
 
         <div style={{ background:C.surface2, borderBottom:`1px solid ${C.border}`, padding:"10px 24px", flexShrink:0 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted, marginBottom:6 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:11, color:C.muted, marginBottom:6 }}>
             <span>Setting up <strong style={{ color:C.accentL }}>{SHEET_LABELS[currentSheetId]}</strong></span>
-            <span style={{ color:C.dim }}>{progress.known} of {progress.total} fields gathered ({progressPct}%)</span>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ color:C.dim }}>{progress.known} of {progress.total} fields gathered ({progressPct}%)</span>
+              <button onClick={()=>setShowReview(true)}
+                style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.accentL}55`, borderRadius:5,
+                  color:C.accentL, fontSize:10, fontWeight:600, cursor:"pointer" }}>📋 Review Data</button>
+              {onLogout && (
+                <button onClick={onLogout}
+                  style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.border}`, borderRadius:5,
+                    color:C.muted, fontSize:10, cursor:"pointer" }}>Log out</button>
+              )}
+            </div>
           </div>
           <div style={{ display:"flex", gap:4 }}>
             {wizardSheetOrder.map((id,i) => (
@@ -915,22 +1173,42 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
                   return (
                     <div key={field.key} style={{ marginBottom:18 }}>
                       <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".4px", marginBottom:10 }}>{field.label}</div>
-                      <div style={{ maxHeight:280, overflowY:"auto", marginBottom:10 }}>
+
+                      {/* Selected roles with inline name capture — required so RACI/Risk Owner dropdowns can see them */}
+                      {selected.length > 0 && (
+                        <div style={{ marginBottom:12, display:"flex", flexDirection:"column", gap:6 }}>
+                          {selected.map(role => {
+                            const member = getTeamMemberByRole(role);
+                            return (
+                              <div key={role} style={{ display:"flex", gap:8, alignItems:"center",
+                                background:C.surface2, borderRadius:6, padding:"6px 8px", border:`1px solid ${C.border}` }}>
+                                <span style={{ fontSize:10, color:C.accentL, fontWeight:600, minWidth:140, flexShrink:0 }}>{role}</span>
+                                <input value={member?.name||""} onChange={e=>updateTeamMemberName(role, e.target.value)}
+                                  placeholder="Enter their name…"
+                                  style={{ flex:1, background:C.surface, border:`1px solid ${member?.name?C.accentL+"66":C.border}`,
+                                    borderRadius:4, color:C.sage, fontSize:11, padding:"5px 8px", outline:"none" }}/>
+                                <button onClick={()=>removeTeamRole(role)}
+                                  style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:13, flexShrink:0 }}>✕</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div style={{ fontSize:9, color:C.muted, textTransform:"uppercase", letterSpacing:".4px", marginBottom:6 }}>Add another role</div>
+                      <div style={{ maxHeight:220, overflowY:"auto", marginBottom:10 }}>
                         {ROLE_GROUPS.map(g => (
                           <div key={g.label} style={{ marginBottom:10 }}>
                             <div style={{ fontSize:9, color:C.muted, textTransform:"uppercase", marginBottom:5 }}>{g.label}</div>
                             <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                              {g.roles.map(role => {
-                                const sel = selected.includes(role);
-                                return (
-                                  <button key={role} onClick={()=>sel?removeTeamRole(role):addTeamRole(role)}
-                                    style={{ padding:"5px 11px", borderRadius:16, fontSize:10, fontWeight:600,
-                                      border:`1px solid ${sel?C.accentL:C.border}`, background:sel?C.accentL+"22":"none",
-                                      color:sel?C.accentL:C.muted, cursor:"pointer" }}>
-                                    {sel?"✓ ":"+ "}{role}
-                                  </button>
-                                );
-                              })}
+                              {g.roles.filter(role=>!selected.includes(role)).map(role => (
+                                <button key={role} onClick={()=>addTeamRole(role)}
+                                  style={{ padding:"5px 11px", borderRadius:16, fontSize:10, fontWeight:600,
+                                    border:`1px solid ${C.border}`, background:"none",
+                                    color:C.muted, cursor:"pointer" }}>
+                                  + {role}
+                                </button>
+                              ))}
                             </div>
                           </div>
                         ))}
@@ -943,7 +1221,12 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
                           style={{ padding:"8px 14px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Add</button>
                       </div>
                       {selected.length > 0 && (
-                        <div style={{ fontSize:10, color:C.muted, marginTop:8 }}>{selected.length} role{selected.length!==1?"s":""} selected</div>
+                        <div style={{ fontSize:10, color:C.muted, marginTop:8 }}>
+                          {selected.length} role{selected.length!==1?"s":""} selected
+                          {selected.some(r=>!getTeamMemberByRole(r)?.name) && (
+                            <span style={{ color:C.milestone }}> — add names so they appear in RACI and Risk Owner lists</span>
+                          )}
+                        </div>
                       )}
                     </div>
                   );
@@ -1069,6 +1352,10 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
         </div>
 
         <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
+
+        {showReview && (
+          <ReviewModal sheets={sheets} tier={tier} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
+        )}
       </div>
     );
   }
@@ -1081,9 +1368,19 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden", height:"100%" }}>
       <div style={{ background:C.surface2, borderBottom:`1px solid ${C.border}`, padding:"8px 20px", flexShrink:0 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted, marginBottom:5 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:11, color:C.muted, marginBottom:5 }}>
           <span>Project setup — <strong style={{ color:C.accentL }}>{tierCfg.label}</strong> tier</span>
-          <span style={{ color:C.dim }}>{approvedCount} of {activeSheets.length} sheets saved</span>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <span style={{ color:C.dim }}>{approvedCount} of {activeSheets.length} sheets saved</span>
+            <button onClick={()=>setShowReview(true)}
+              style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.accentL}55`, borderRadius:5,
+                color:C.accentL, fontSize:10, fontWeight:600, cursor:"pointer" }}>📋 Review Data</button>
+            {onLogout && (
+              <button onClick={onLogout}
+                style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.border}`, borderRadius:5,
+                  color:C.muted, fontSize:10, cursor:"pointer" }}>Log out</button>
+            )}
+          </div>
         </div>
         <div style={{ display:"flex", gap:3 }}>
           {activeSheets.map(id => {
@@ -1159,6 +1456,10 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
             </div>
           </div>
         </div>
+      )}
+
+      {showReview && (
+        <ReviewModal sheets={sheets} tier={tier} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
       )}
     </div>
   );
