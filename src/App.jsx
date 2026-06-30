@@ -112,29 +112,38 @@ export default function App() {
       } catch(e) { /* ignore */ }
       return;
     }
-    // Special key "__loginCode__" — adds PM login code into l2.loginCodes
+    // Special key "__loginCode__" — appends a login code to l2.loginCodes, no duplicates
     if (sheetId === "__loginCode__") {
       const loginEntry = tierOverride;
+      setState(prev => {
+        const existing = prev.l2.loginCodes || [];
+        if (existing.some(m => m.loginCode === loginEntry.loginCode)) return prev;
+        return {
+          ...prev,
+          l2: { ...prev.l2, loginCodes: [...existing, loginEntry] },
+        };
+      });
+      try {
+        if (loginEntry.isPM) {
+          const existing = JSON.parse(localStorage.getItem(LAST_LOGIN_KEY) || "{}");
+          localStorage.setItem(LAST_LOGIN_KEY, JSON.stringify({
+            ...existing,
+            memberCode: loginEntry.loginCode,
+            memberName: loginEntry.name,
+            lastUsed:   new Date().toISOString(),
+          }));
+        }
+      } catch(e) { /* ignore */ }
+      return;
+    }
+    // Special key "__removeLoginCode__" — removes a login code when a wizard role is deselected.
+    // tierOverride carries the loginCode string directly for this key.
+    if (sheetId === "__removeLoginCode__") {
+      const codeToRemove = tierOverride;
       setState(prev => ({
         ...prev,
-        l2: {
-          ...prev.l2,
-          loginCodes: [
-            ...(prev.l2.loginCodes || []).filter(m => !m.isPM),
-            loginEntry,
-          ],
-        },
+        l2: { ...prev.l2, loginCodes: (prev.l2.loginCodes||[]).filter(m => m.loginCode !== codeToRemove) },
       }));
-      // Remember last login code for pre-fill
-      try {
-        const existing = JSON.parse(localStorage.getItem("norcon_last_login") || "{}");
-        localStorage.setItem("norcon_last_login", JSON.stringify({
-          ...existing,
-          memberCode: loginEntry.loginCode,
-          memberName: loginEntry.name,
-          lastUsed:   new Date().toISOString(),
-        }));
-      } catch(e) { /* ignore */ }
       return;
     }
     setState(prev => ({

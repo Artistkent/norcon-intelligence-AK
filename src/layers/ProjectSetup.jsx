@@ -476,10 +476,29 @@ Return ONLY JSON, no markdown:
       if (Object.keys(updates).length) onSheetUpdate("01", { charter:{...c,...updates} }, "ai-draft");
     }
     const existingTeam = sheets["02"]?.data?.teamMembers || [];
+    const SINGLE_HOLDER_ROLES = ["Project Manager", "Project Sponsor"];
     if (extracted.team?.length) {
-      const newM = extracted.team.filter(m=>m.name && !existingTeam.some(e=>e.name?.toLowerCase()===m.name.toLowerCase()))
-        .map((m,i)=>({_id:`TM-${String(existingTeam.length+i+1).padStart(3,"0")}`,name:m.name,role:m.role||"",deliveryRole:"",availability:"",loginCode:"",location:"",responsibilities:""}));
-      if (newM.length) onSheetUpdate("02", { teamMembers:[...existingTeam,...newM] }, "ai-draft");
+      const existingCodes = [...(l2?.loginCodes||[]).map(m=>m.loginCode), ...existingTeam.map(m=>m.loginCode).filter(Boolean)];
+      const newM = extracted.team.filter(m => {
+        if (!m.name) return false;
+        if (SINGLE_HOLDER_ROLES.includes(m.role) &&
+            existingTeam.some(e => e.role === m.role)) return false;
+        return !existingTeam.some(e => e.name?.toLowerCase() === m.name.toLowerCase());
+      }).map((m,i)=>{
+        const code = generateLoginCode(project?.code || "NC", existingCodes);
+        existingCodes.push(code);
+        return {_id:`TM-${String(existingTeam.length+i+1).padStart(3,"0")}`,name:m.name,role:m.role||"",
+          deliveryRole:"",availability:"",loginCode:code,location:"",responsibilities:""};
+      });
+      if (newM.length) {
+        onSheetUpdate("02", { teamMembers:[...existingTeam,...newM] }, "ai-draft");
+        // Also register each new member's login code so L3 can see them
+        newM.forEach(m => {
+          onSheetUpdate("__loginCode__", {}, "empty", {
+            loginCode: m.loginCode, name: m.name, role: m.role, isPM: false,
+          });
+        });
+      }
     }
     const existingActs = sheets["03"]?.data?.activities || [];
     const existingMiles = sheets["03"]?.data?.milestones || [];
@@ -588,14 +607,38 @@ Return ONLY JSON, no markdown:
     setPhase("intake");
   };
 
-  const saveFieldAnswer = (key, value) => {
+  const saveFieldAnswer = async (key, value) => {
     setFieldAnswers(prev => ({ ...prev, [key]: value }));
     if (["projectManager","projectName","organisation","purpose","projectSponsor","startDate","endDate","budget"].includes(key)) {
       const c = sheets["01"]?.data?.charter || {};
       onSheetUpdate("01", { charter: { ...c, [key]: value } }, "in-progress");
       return;
     }
-    if (key === "raciNote" || key === "changeThreshold" || key === "sustainFocus" || key === "keyMilestones") {
+    if (key === "keyMilestones") {
+      if (!value || !value.trim()) return;
+      // Parse free-text milestone description into real Schedule milestone records
+      setAiStatus("Adding milestones to Schedule…");
+      try {
+        const prompt = `Extract distinct milestones from this PM input. Each milestone needs a name and, if a date is mentioned or inferable, a target date (YYYY-MM-DD).
+Input: "${value}"
+Return ONLY JSON, no markdown: {"milestones":[{"name":"","targetDate":""}]}
+If no clear milestones are described, return {"milestones":[]}`;
+        const raw = await callExtract([{role:"user",content:prompt}], 400);
+        const parsed = safeParseJSON(raw);
+        if (parsed.milestones?.length) {
+          const existingMiles = sheets["03"]?.data?.milestones || [];
+          const newMiles = parsed.milestones.filter(m=>m.name && !existingMiles.some(e=>e.name?.toLowerCase().trim()===m.name.toLowerCase().trim()))
+            .map((m,i)=>({_id:`MS-${String(existingMiles.length+i+1).padStart(3,"0")}`, name:m.name, phase:"", targetDate:m.targetDate||"", _complete:false}));
+          if (newMiles.length) {
+            const acts = sheets["03"]?.data?.activities || [];
+            onSheetUpdate("03", { activities:acts, milestones:[...existingMiles,...newMiles] }, "in-progress");
+          }
+        }
+      } catch(e) { /* non-fatal — milestone parsing failure shouldn't block wizard */ }
+      setAiStatus("");
+      return;
+    }
+    if (key === "raciNote" || key === "changeThreshold" || key === "sustainFocus") {
       const c = sheets["01"]?.data?.charter || {};
       onSheetUpdate("01", { charter: { ...c, [`_note_${key}`]: value } }, "in-progress");
     }
@@ -604,14 +647,18 @@ Return ONLY JSON, no markdown:
   const addTeamRole = (role) => {
     const existing = sheets["02"]?.data?.teamMembers || [];
     if (existing.some(m => m.role === role)) return;
-    const code = generateLoginCode(project?.code || "NC", existing.map(m=>m.loginCode));
+    const existingCodes = [...(l2?.loginCodes||[]).map(m=>m.loginCode), ...existing.map(m=>m.loginCode).filter(Boolean)];
+    const code = generateLoginCode(project?.code || "NC", existingCodes);
     const newMember = { _id:`TM-${String(existing.length+1).padStart(3,"0")}`, loginCode:code, name:"", role,
       deliveryRole:"", availability:"", location:"", responsibilities:"" };
     onSheetUpdate("02", { teamMembers: [...existing, newMember] }, "in-progress");
+    onSheetUpdate("__loginCode__", {}, "empty", { loginCode: code, name:"", role, isPM:false });
   };
   const removeTeamRole = (role) => {
     const existing = sheets["02"]?.data?.teamMembers || [];
+    const removed = existing.find(m => m.role === role);
     onSheetUpdate("02", { teamMembers: existing.filter(m => m.role !== role) }, "in-progress");
+    if (removed?.loginCode) onSheetUpdate("__removeLoginCode__", {}, "empty", removed.loginCode);
   };
 
   const addChipItem = (fieldKey, item) => {
@@ -740,18 +787,19 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
 
   if (phase === "intake") {
     return (
-      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, padding:32 }}>
-        <div style={{ maxWidth:520, width:"100%" }}>
-          <div style={{ textAlign:"center", marginBottom:28 }}>
-            <div style={{ fontSize:28, marginBottom:10 }}>📄</div>
-            <div style={{ fontSize:18, fontWeight:700, color:C.sage, marginBottom:6 }}>Have a project document?</div>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", background:C.bg, padding:"24px 32px", overflow:"hidden" }}>
+        <div style={{ maxWidth:520, width:"100%", display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
+          <div style={{ textAlign:"center", marginBottom:20, flexShrink:0 }}>
+            <div style={{ fontSize:26, marginBottom:8 }}>📄</div>
+            <div style={{ fontSize:17, fontWeight:700, color:C.sage, marginBottom:5 }}>Have a project document?</div>
             <div style={{ fontSize:12, color:C.muted, lineHeight:1.6 }}>
               Upload a brief, schedule, or proposal and AI will read it and pre-fill your project. Or skip and we'll build it together.
             </div>
           </div>
 
-          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"22px 24px" }}>
-            <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"18px 22px",
+            flex:1, minHeight:0, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+            <div style={{ display:"flex", gap:6, marginBottom:14, flexShrink:0 }}>
               {["file","text"].map(m => (
                 <button key={m} onClick={()=>setUploadMode(m)}
                   style={{ flex:1, padding:"8px", fontSize:11, fontWeight:700,
@@ -762,45 +810,47 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
               ))}
             </div>
 
-            {uploadMode === "file" ? (
-              <label style={{ display:"block", padding:"28px 14px", border:`1.5px dashed ${C.border}`,
-                borderRadius:8, cursor:"pointer", textAlign:"center", fontSize:12, color:C.muted, background:C.surface2 }}>
-                <input type="file" multiple accept=".docx,.xlsx,.xls,.pdf,.txt,.csv" onChange={handleFileUpload} style={{ display:"none" }}/>
-                {extracting ? <span style={{ color:C.accentL }}>⚡ {aiStatus || "Processing…"}</span>
-                  : <>Drop files or click<br/><span style={{ fontSize:10 }}>.docx · .xlsx · .pdf · .txt</span></>}
-              </label>
-            ) : (
-              <div>
-                <textarea value={pasteText} onChange={e=>setPasteText(e.target.value)}
-                  placeholder="Paste your project brief, notes, or summary…"
-                  style={{ ...inp, minHeight:120, resize:"none", lineHeight:1.5 }}/>
-                <button onClick={handleTextExtract} disabled={!pasteText.trim()||extracting}
-                  style={{ width:"100%", marginTop:8, padding:"9px", background:pasteText.trim()&&!extracting?C.accent:"#1F4D34",
-                    border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700,
-                    cursor:pasteText.trim()&&!extracting?"pointer":"not-allowed" }}>
-                  {extracting ? `⚡ ${aiStatus||"Processing…"}` : "⚡ Extract Information"}
-                </button>
-              </div>
-            )}
+            <div style={{ flex:1, minHeight:0, overflowY:"auto" }}>
+              {uploadMode === "file" ? (
+                <label style={{ display:"block", padding:"22px 14px", border:`1.5px dashed ${C.border}`,
+                  borderRadius:8, cursor:"pointer", textAlign:"center", fontSize:12, color:C.muted, background:C.surface2 }}>
+                  <input type="file" multiple accept=".docx,.xlsx,.xls,.pdf,.txt,.csv" onChange={handleFileUpload} style={{ display:"none" }}/>
+                  {extracting ? <span style={{ color:C.accentL }}>⚡ {aiStatus || "Processing…"}</span>
+                    : <>Drop files or click<br/><span style={{ fontSize:10 }}>.docx · .xlsx · .pdf · .txt</span></>}
+                </label>
+              ) : (
+                <div>
+                  <textarea value={pasteText} onChange={e=>setPasteText(e.target.value)}
+                    placeholder="Paste your project brief, notes, or summary…"
+                    style={{ ...inp, minHeight:100, resize:"none", lineHeight:1.5 }}/>
+                  <button onClick={handleTextExtract} disabled={!pasteText.trim()||extracting}
+                    style={{ width:"100%", marginTop:8, padding:"9px", background:pasteText.trim()&&!extracting?C.accent:"#1F4D34",
+                      border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700,
+                      cursor:pasteText.trim()&&!extracting?"pointer":"not-allowed" }}>
+                    {extracting ? `⚡ ${aiStatus||"Processing…"}` : "⚡ Extract Information"}
+                  </button>
+                </div>
+              )}
 
-            {fileList.length > 0 && (
-              <div style={{ marginTop:12 }}>
-                {fileList.map((f,i) => (
-                  <div key={i} style={{ fontSize:11, color:C.accentL, padding:"3px 0", display:"flex", gap:6 }}>
-                    <span style={{ color:C.activity }}>✓</span>{f}
-                  </div>
-                ))}
-                {docAnalysis && (
-                  <div style={{ marginTop:8, fontSize:10, color:C.dim, fontStyle:"italic", lineHeight:1.5,
-                    background:C.surface2, borderRadius:6, padding:"8px 10px" }}>
-                    {docAnalysis}
-                  </div>
-                )}
-              </div>
-            )}
+              {fileList.length > 0 && (
+                <div style={{ marginTop:12 }}>
+                  {fileList.map((f,i) => (
+                    <div key={i} style={{ fontSize:11, color:C.accentL, padding:"3px 0", display:"flex", gap:6 }}>
+                      <span style={{ color:C.activity }}>✓</span>{f}
+                    </div>
+                  ))}
+                  {docAnalysis && (
+                    <div style={{ marginTop:8, fontSize:10, color:C.dim, fontStyle:"italic", lineHeight:1.5,
+                      background:C.surface2, borderRadius:6, padding:"8px 10px" }}>
+                      {docAnalysis}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div style={{ display:"flex", gap:10, marginTop:18 }}>
+          <div style={{ display:"flex", gap:10, marginTop:14, flexShrink:0 }}>
             <button onClick={()=>onSheetUpdate("__tier__",{},"empty",null)}
               style={{ padding:"10px 16px", background:"none", border:`1px solid ${C.border}`,
                 borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>← Back</button>
