@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import mammoth from "mammoth";
-import { SHEETS, isSheetAccessible } from "../store/appStore.js";
+import { generateLoginCode } from "../store/appStore.js";
 import Sheet01Charter      from "./sheets/Sheet01Charter.jsx";
 import Sheet02Team         from "./sheets/Sheet02Team.jsx";
 import Sheet03Schedule     from "./sheets/Sheet03Schedule.jsx";
@@ -18,178 +18,212 @@ const C = {
   risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2",
 };
 
-// ── Tier definitions ──────────────────────────────────────────────────────────
 const TIERS = {
   light: {
-    label: "Light",
-    icon: "🌱",
+    label: "Light", icon: "🌱",
     desc: "Essentials for simple projects — events, community initiatives, birthday planning.",
-    sheets: ["01","02","03","04","05","10"],
+    sheets: ["02","01","04","03","05","10"],
     l3Tabs: ["home","dashboard","baseline","raci","risks","sustain","report"],
-    questions: [
-      { id:"q1", text:"What is this project trying to achieve, and by when?",   fields:["projectName","purpose","endDate"] },
-      { id:"q2", text:"Who is leading this project and who is the sponsor?",     fields:["projectManager","projectSponsor"] },
-      { id:"q3", text:"What is the total budget available?",                     fields:["budget"] },
-      { id:"q4", text:"What are the two or three biggest risks you foresee?",    fields:["risks"] },
-      { id:"q5", text:"Who are the key people involved and what are their roles?", fields:["team"] },
-      { id:"q6", text:"What does success look like — how will you know it worked?", fields:["successCriteria"] },
-    ],
   },
   full: {
-    label: "Full",
-    icon: "🏗️",
+    label: "Full", icon: "🏗️",
     desc: "Complete governance suite for complex or professional projects.",
-    sheets: ["01","02","03","04","05","06","07","08","10"],
+    sheets: ["02","01","04","05","08","07","06","03","10"],
     l3Tabs: ["home","dashboard","baseline","raci","benefits","risks","stakeholders","sustain","report"],
-    questions: [
-      { id:"q1", text:"What is this project trying to achieve, and by when?",          fields:["projectName","purpose","endDate"] },
-      { id:"q2", text:"Who is leading this project, who sponsors it, and which organisation?", fields:["projectManager","projectSponsor","organisation"] },
-      { id:"q3", text:"What is the total budget and how is it allocated by phase?",    fields:["budget","schedule"] },
-      { id:"q4", text:"What are the key deliverables and their target dates?",         fields:["deliverables","schedule"] },
-      { id:"q5", text:"Who are the team members, their roles and availability?",       fields:["team"] },
-      { id:"q6", text:"Who are the key stakeholders and what is their interest?",      fields:["stakeholders"] },
-      { id:"q7", text:"What are the main risks and how will you respond to them?",     fields:["risks"] },
-      { id:"q8", text:"What are the strategic benefits and how will you measure them?", fields:["benefits"] },
-      { id:"q9", text:"What change control or approval thresholds apply?",             fields:["changeControl"] },
-    ],
   },
 };
 
 const SHEET_COMPONENTS = {
-  "01": Sheet01Charter,
-  "02": Sheet02Team,
-  "03": Sheet03Schedule,
-  "04": Sheet04RACI,
-  "05": Sheet05Risks,
-  "06": Sheet06Change,
-  "07": Sheet07KDTracker,
-  "08": Sheet08Stakeholders,
-  "10": Sheet10Sustainability,
+  "01": Sheet01Charter, "02": Sheet02Team, "03": Sheet03Schedule,
+  "04": Sheet04RACI, "05": Sheet05Risks, "06": Sheet06Change,
+  "07": Sheet07KDTracker, "08": Sheet08Stakeholders, "10": Sheet10Sustainability,
 };
-
 const SHEET_LABELS = {
   "01":"Charter", "02":"Team", "03":"Schedule", "04":"RACI",
   "05":"Risks", "06":"Change Control", "07":"Benefits & KPIs",
   "08":"Stakeholders", "10":"Sustainability",
 };
 
-// ── JSON sanitiser — strips markdown fences, recovers truncated arrays ─────────
+const WIZARD_SHEETS = {
+  light: ["02","01","04","05","10"],
+  full:  ["02","01","04","08","07","06","05","10"],
+};
+const scheduleLast = (arr) => [...arr, "03"];
+
+const CLUSTERS = {
+  "02": [
+    { id:"t1", title:"Who's running this?", fields:[
+      { key:"projectManager", label:"Project Manager", type:"text", required:true },
+    ]},
+    { id:"t2", title:"Core team", fields:[
+      { key:"teamRoles", label:"Team roles needed", type:"roles" },
+    ]},
+  ],
+  "01": [
+    { id:"c1", title:"Name your project", fields:[
+      { key:"projectName", label:"Project Name", type:"text", required:true },
+      { key:"organisation", label:"Organisation", type:"text" },
+    ]},
+    { id:"c2", title:"What's it for?", fields:[
+      { key:"purpose", label:"Purpose — what will this achieve?", type:"textarea", aiChips:true },
+    ]},
+    { id:"c3", title:"Sponsorship & oversight", fields:[
+      { key:"projectSponsor", label:"Project Sponsor", type:"text" },
+    ]},
+    { id:"c4", title:"Timing", fields:[
+      { key:"startDate", label:"Start Date", type:"date" },
+      { key:"endDate", label:"End Date", type:"date" },
+    ]},
+    { id:"c5", title:"Budget", fields:[
+      { key:"budget", label:"Total Budget", type:"text", placeholder:"e.g. 5000 or N/A" },
+    ]},
+  ],
+  "04": [
+    { id:"r1", title:"Responsibilities", fields:[
+      { key:"raciNote", label:"Any specific responsibility splits to note?", type:"textarea", optional:true },
+    ]},
+  ],
+  "05": [
+    { id:"rk1", title:"What could go wrong?", fields:[
+      { key:"risks", label:"Key risks", type:"chips-multi", aiChips:true },
+    ]},
+  ],
+  "08": [
+    { id:"s1", title:"Who has a stake in this?", fields:[
+      { key:"stakeholders", label:"Key stakeholders", type:"chips-multi", aiChips:true },
+    ]},
+  ],
+  "07": [
+    { id:"b1", title:"What does success unlock?", fields:[
+      { key:"benefits", label:"Strategic benefits", type:"chips-multi", aiChips:true },
+    ]},
+  ],
+  "06": [
+    { id:"cc1", title:"Change approval", fields:[
+      { key:"changeThreshold", label:"What level of change needs formal approval?", type:"textarea", optional:true },
+    ]},
+  ],
+  "10": [
+    { id:"sus1", title:"Sustainability focus", fields:[
+      { key:"sustainFocus", label:"Any sustainability priorities for this project?", type:"chips-multi", aiChips:true, optional:true },
+    ]},
+  ],
+  "03": [
+    { id:"sc1", title:"Key milestones", fields:[
+      { key:"keyMilestones", label:"Any fixed dates or milestones?", type:"textarea", optional:true },
+    ]},
+  ],
+};
+
 function safeParseJSON(raw) {
   if (!raw || typeof raw !== "string") throw new Error("Empty response");
-  // Strip markdown code fences
   let clean = raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```\s*$/,"").trim();
-  try {
-    return JSON.parse(clean);
-  } catch(e1) {
-    // Attempt to recover truncated JSON by closing open structures
+  try { return JSON.parse(clean); }
+  catch(e1) {
     let attempt = clean;
-    // Count unclosed braces/brackets
-    let braces = 0, brackets = 0, inStr = false, escape = false;
-    for (let i = 0; i < attempt.length; i++) {
-      const ch = attempt[i];
-      if (escape) { escape = false; continue; }
-      if (ch === "\\" && inStr) { escape = true; continue; }
-      if (ch === '"') { inStr = !inStr; continue; }
+    let braces=0, brackets=0, inStr=false, escape=false;
+    for (let i=0;i<attempt.length;i++){
+      const ch=attempt[i];
+      if (escape){escape=false;continue;}
+      if (ch==="\\"&&inStr){escape=true;continue;}
+      if (ch==='"'){inStr=!inStr;continue;}
       if (inStr) continue;
-      if (ch === "{") braces++;
-      if (ch === "}") braces--;
-      if (ch === "[") brackets++;
-      if (ch === "]") brackets--;
+      if (ch==="{") braces++; if (ch==="}") braces--;
+      if (ch==="[") brackets++; if (ch==="]") brackets--;
     }
-    // Remove trailing comma before attempting close
     attempt = attempt.replace(/,\s*$/, "");
-    // Close open strings
     if (inStr) attempt += '"';
-    // Close open brackets/braces
-    while (brackets > 0) { attempt += "]"; brackets--; }
-    while (braces > 0)   { attempt += "}"; braces--; }
-    try {
-      return JSON.parse(attempt);
-    } catch(e2) {
-      throw new Error("JSON parse failed after recovery attempt: " + e1.message);
-    }
+    while (brackets>0){attempt+="]";brackets--;}
+    while (braces>0){attempt+="}";braces--;}
+    try { return JSON.parse(attempt); }
+    catch(e2){ throw new Error("JSON parse failed: "+e1.message); }
   }
 }
 
-// ── Call extract API with robust error handling ───────────────────────────────
-async function callExtract(messages, maxTokens = 2000) {
+async function callExtract(messages, maxTokens=2000) {
   const res = await fetch("/api/extract", {
-    method: "POST",
-    headers: { "Content-Type":"application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: maxTokens,
-      messages,
-    }),
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, messages }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `API error ${res.status}`);
-  }
+  if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.error || `API error ${res.status}`); }
   const data = await res.json();
-  const text = (data.content || []).map(b => b.text || "").join("").trim();
+  const text = (data.content||[]).map(b=>b.text||"").join("").trim();
   if (!text) throw new Error("Empty response from AI");
   return text;
 }
 
-// ── Tier selection screen ────────────────────────────────────────────────────
+const excelDateToISO = (serial) => {
+  if (!serial || isNaN(serial)) return "";
+  const date = new Date((serial - 25569) * 86400 * 1000);
+  return isNaN(date.getTime()) ? "" : date.toISOString().slice(0,10);
+};
+
+const readExcelAsText = async (file) => {
+  const XLSX = await import("xlsx");
+  const buf  = await file.arrayBuffer();
+  const wb   = XLSX.read(buf, { type:"array", cellDates:false });
+  let output = `EXCEL FILE: ${file.name}\n\n`;
+  wb.SheetNames.slice(0,3).forEach(name => {
+    const ws   = wb.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
+    output += `--- Sheet: ${name} ---\n`;
+    rows.slice(0,150).forEach(row => {
+      const cells = row.map(c => {
+        if (typeof c === "number" && c>40000 && c<60000) return excelDateToISO(c);
+        return String(c).trim();
+      }).filter(c=>c!=="");
+      if (cells.length>0) output += cells.join("\t")+"\n";
+    });
+    output += "\n";
+  });
+  return output;
+};
+
 function TierSelect({ onSelect, onBack }) {
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.bg }}>
-
-      {/* Step nav bar */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 24px",
         borderBottom:`1px solid ${C.border}`, background:C.surface, flexShrink:0 }}>
         <button onClick={onBack}
           style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px",
             background:"none", border:`1px solid ${C.border}`, borderRadius:6,
-            color:C.muted, fontSize:12, cursor:"pointer" }}>
-          ← Back
-        </button>
+            color:C.muted, fontSize:12, cursor:"pointer" }}>← Back</button>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
-          {["Welcome","Tier","Project Details"].map((label, i) => (
+          {["Welcome","Tier","Project Details"].map((label,i) => (
             <div key={label} style={{ display:"flex", alignItems:"center", gap:8 }}>
               <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                 <div style={{ width:22, height:22, borderRadius:"50%", fontSize:10, fontWeight:700,
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  background: i === 1 ? C.accent : i < 1 ? C.accentL+"33" : C.surface2,
-                  color: i === 1 ? "#fff" : i < 1 ? C.accentL : C.muted,
-                  border: `1px solid ${i === 1 ? C.accent : i < 1 ? C.accentL : C.border}` }}>
-                  {i < 1 ? "✓" : i + 1}
-                </div>
-                <span style={{ fontSize:11, color: i === 1 ? C.sage : i < 1 ? C.accentL : C.muted,
-                  fontWeight: i === 1 ? 700 : 400 }}>{label}</span>
+                  background: i===1?C.accent:i<1?C.accentL+"33":C.surface2,
+                  color: i===1?"#fff":i<1?C.accentL:C.muted,
+                  border:`1px solid ${i===1?C.accent:i<1?C.accentL:C.border}` }}>{i<1?"✓":i+1}</div>
+                <span style={{ fontSize:11, color:i===1?C.sage:i<1?C.accentL:C.muted, fontWeight:i===1?700:400 }}>{label}</span>
               </div>
-              {i < 2 && <span style={{ color:C.border, fontSize:14 }}>›</span>}
+              {i<2 && <span style={{ color:C.border, fontSize:14 }}>›</span>}
             </div>
           ))}
         </div>
       </div>
-
-      {/* Content */}
       <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
         <div style={{ maxWidth:560, width:"100%" }}>
-          <div style={{ fontSize:22, fontWeight:700, color:C.sage, marginBottom:6, textAlign:"center" }}>
-            🏗️ NorCon Project Setup
-          </div>
+          <div style={{ fontSize:22, fontWeight:700, color:C.sage, marginBottom:6, textAlign:"center" }}>🏗️ NorCon Project Setup</div>
           <div style={{ fontSize:13, color:C.muted, marginBottom:32, textAlign:"center", lineHeight:1.6 }}>
             Choose the governance level that fits your project. This determines which tools and modules are available.
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-            {Object.entries(TIERS).map(([key, tier]) => (
-              <button key={key} onClick={() => onSelect(key)}
+            {Object.entries(TIERS).map(([key,t]) => (
+              <button key={key} onClick={()=>onSelect(key)}
                 style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
                   padding:"24px 20px", cursor:"pointer", textAlign:"left", transition:"border-color .15s" }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = C.accentL}
-                onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
-                <div style={{ fontSize:28, marginBottom:10 }}>{tier.icon}</div>
-                <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:6 }}>{tier.label}</div>
-                <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:14 }}>{tier.desc}</div>
+                onMouseEnter={e=>e.currentTarget.style.borderColor=C.accentL}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                <div style={{ fontSize:28, marginBottom:10 }}>{t.icon}</div>
+                <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:6 }}>{t.label}</div>
+                <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:14 }}>{t.desc}</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                  {tier.sheets.map(id => (
+                  {t.sheets.map(id => (
                     <div key={id} style={{ fontSize:11, color:C.dim, display:"flex", alignItems:"center", gap:6 }}>
-                      <span style={{ color:C.accentL, fontSize:9 }}>✓</span>
-                      {SHEET_LABELS[id]}
+                      <span style={{ color:C.accentL, fontSize:9 }}>✓</span>{SHEET_LABELS[id]}
                     </div>
                   ))}
                 </div>
@@ -202,7 +236,6 @@ function TierSelect({ onSelect, onBack }) {
   );
 }
 
-// ── PM Setup screen — project name, code, PM name, login code ────────────────
 function PMSetup({ tier, onConfirm, onBack }) {
   const [projectName, setProjectName] = useState("");
   const [projectCode, setProjectCode] = useState("");
@@ -210,224 +243,121 @@ function PMSetup({ tier, onConfirm, onBack }) {
   const [pmCode,      setPmCode]      = useState("");
   const [codeReady,   setCodeReady]   = useState(false);
   const [errors,      setErrors]      = useState({});
-
   const tierCfg = TIERS[tier];
 
   const deriveCode = (name) => {
-    // Auto-suggest a project code from first letters of project name words
     const words = name.trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) return "";
-    if (words.length === 1) return words[0].slice(0, 4).toUpperCase();
-    return words.map(w => w[0]).join("").slice(0, 5).toUpperCase();
+    if (!words.length) return "";
+    if (words.length===1) return words[0].slice(0,4).toUpperCase();
+    return words.map(w=>w[0]).join("").slice(0,5).toUpperCase();
   };
-
   const handleProjectNameChange = (val) => {
-    setProjectName(val);
-    setCodeReady(false);
-    setPmCode("");
-    // Auto-fill project code if it hasn't been manually edited
-    if (!projectCode || projectCode === deriveCode(projectName)) {
-      setProjectCode(deriveCode(val));
-    }
+    setProjectName(val); setCodeReady(false); setPmCode("");
+    if (!projectCode || projectCode===deriveCode(projectName)) setProjectCode(deriveCode(val));
   };
-
   const validate = () => {
     const e = {};
-    if (!projectName.trim()) e.projectName = "Required";
-    if (!projectCode.trim()) e.projectCode = "Required";
-    if (!pmName.trim())      e.pmName      = "Required";
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    if (!projectName.trim()) e.projectName="Required";
+    if (!projectCode.trim()) e.projectCode="Required";
+    if (!pmName.trim())      e.pmName="Required";
+    setErrors(e); return Object.keys(e).length===0;
   };
-
   const generateCode = () => {
     if (!validate()) return;
-    const prefix = (projectCode || "PM").toUpperCase().slice(0, 5);
-    const num    = Math.floor(1000 + Math.random() * 9000);
-    setPmCode(`${prefix}-${num}`);
-    setCodeReady(true);
+    const prefix=(projectCode||"PM").toUpperCase().slice(0,5);
+    setPmCode(`${prefix}-${Math.floor(1000+Math.random()*9000)}`); setCodeReady(true);
   };
-
   const handleConfirm = () => {
     if (!codeReady) { generateCode(); return; }
     if (!validate()) return;
-    onConfirm({
-      projectName: projectName.trim(),
-      projectCode: projectCode.trim().toUpperCase(),
-      pmName:      pmName.trim(),
-      loginCode:   pmCode,
-    });
+    onConfirm({ projectName:projectName.trim(), projectCode:projectCode.trim().toUpperCase(), pmName:pmName.trim(), loginCode:pmCode });
   };
-
-  const inp = {
-    background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6,
-    color:C.sage, fontSize:13, padding:"10px 13px", outline:"none",
-    width:"100%", boxSizing:"border-box", fontFamily:"inherit",
-  };
-
-  const fieldErr = (key) => errors[key]
-    ? <div style={{ fontSize:10, color:C.risk, marginTop:4 }}>{errors[key]}</div>
-    : null;
+  const inp = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6, color:C.sage,
+    fontSize:13, padding:"10px 13px", outline:"none", width:"100%", boxSizing:"border-box", fontFamily:"inherit" };
+  const fieldErr = (k) => errors[k] ? <div style={{ fontSize:10, color:C.risk, marginTop:4 }}>{errors[k]}</div> : null;
 
   return (
     <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.bg, overflowY:"auto" }}>
-
-      {/* Step nav bar */}
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 24px",
         borderBottom:`1px solid ${C.border}`, background:C.surface, flexShrink:0 }}>
         <button onClick={onBack}
           style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px",
             background:"none", border:`1px solid ${C.border}`, borderRadius:6,
-            color:C.muted, fontSize:12, cursor:"pointer" }}>
-          ← Back
-        </button>
+            color:C.muted, fontSize:12, cursor:"pointer" }}>← Back</button>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
-          {["Welcome","Tier","Project Details"].map((label, i) => (
+          {["Welcome","Tier","Project Details"].map((label,i) => (
             <div key={label} style={{ display:"flex", alignItems:"center", gap:8 }}>
               <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                 <div style={{ width:22, height:22, borderRadius:"50%", fontSize:10, fontWeight:700,
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  background: i === 2 ? C.accent : C.accentL+"33",
-                  color: i === 2 ? "#fff" : C.accentL,
-                  border: `1px solid ${i === 2 ? C.accent : C.accentL}` }}>
-                  {i < 2 ? "✓" : 3}
-                </div>
-                <span style={{ fontSize:11, color: i === 2 ? C.sage : C.accentL,
-                  fontWeight: i === 2 ? 700 : 400 }}>{label}</span>
+                  background:i===2?C.accent:C.accentL+"33", color:i===2?"#fff":C.accentL,
+                  border:`1px solid ${i===2?C.accent:C.accentL}` }}>{i<2?"✓":3}</div>
+                <span style={{ fontSize:11, color:i===2?C.sage:C.accentL, fontWeight:i===2?700:400 }}>{label}</span>
               </div>
-              {i < 2 && <span style={{ color:C.border, fontSize:14 }}>›</span>}
+              {i<2 && <span style={{ color:C.border, fontSize:14 }}>›</span>}
             </div>
           ))}
         </div>
       </div>
-
-      {/* Content */}
       <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
       <div style={{ maxWidth:480, width:"100%" }}>
-
-        {/* Header */}
         <div style={{ textAlign:"center", marginBottom:24 }}>
           <div style={{ fontSize:28, marginBottom:8 }}>{tierCfg.icon}</div>
-          <div style={{ fontSize:18, fontWeight:700, color:C.sage, marginBottom:6 }}>
-            {tierCfg.label} Project Setup
-          </div>
-          <div style={{ fontSize:12, color:C.muted, lineHeight:1.6 }}>
-            Give your project a name and code, then register the Project Manager.
-          </div>
+          <div style={{ fontSize:18, fontWeight:700, color:C.sage, marginBottom:6 }}>{tierCfg.label} Project Setup</div>
+          <div style={{ fontSize:12, color:C.muted, lineHeight:1.6 }}>Give your project a name and code, then register the Project Manager.</div>
         </div>
-
-        {/* Card */}
-        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
-          padding:"24px 28px" }}>
-
-          {/* ── Project Details ── */}
-          <div style={{ fontSize:10, fontWeight:700, color:C.accentL, textTransform:"uppercase",
-            letterSpacing:".6px", marginBottom:12 }}>Project Details</div>
-
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"24px 28px" }}>
+          <div style={{ fontSize:10, fontWeight:700, color:C.accentL, textTransform:"uppercase", letterSpacing:".6px", marginBottom:12 }}>Project Details</div>
           <div style={{ marginBottom:16 }}>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim,
-              textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>
-              Project Name
-            </label>
-            <input style={{ ...inp, borderColor: errors.projectName ? C.risk : C.border }}
-              value={projectName}
-              onChange={e => handleProjectNameChange(e.target.value)}
-              placeholder="e.g. Northumbria Waterfront Regeneration"
-              autoFocus/>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>Project Name</label>
+            <input style={{ ...inp, borderColor:errors.projectName?C.risk:C.border }} value={projectName}
+              onChange={e=>handleProjectNameChange(e.target.value)} placeholder="e.g. Northumbria Waterfront Regeneration" autoFocus/>
             {fieldErr("projectName")}
           </div>
-
           <div style={{ marginBottom:20 }}>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim,
-              textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>
-              Project Code
-              <span style={{ fontSize:9, color:C.muted, fontWeight:400, marginLeft:6, textTransform:"none" }}>
-                (used as login code prefix)
-              </span>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>
+              Project Code <span style={{ fontSize:9, color:C.muted, fontWeight:400, marginLeft:6, textTransform:"none" }}>(used as login code prefix)</span>
             </label>
-            <input style={{ ...inp, borderColor: errors.projectCode ? C.risk : C.border,
-              textTransform:"uppercase", fontFamily:"monospace", letterSpacing:".08em" }}
-              value={projectCode}
-              onChange={e => { setProjectCode(e.target.value.toUpperCase().slice(0,6)); setCodeReady(false); setPmCode(""); }}
-              placeholder="e.g. NWR"/>
+            <input style={{ ...inp, borderColor:errors.projectCode?C.risk:C.border, textTransform:"uppercase", fontFamily:"monospace", letterSpacing:".08em" }}
+              value={projectCode} onChange={e=>{setProjectCode(e.target.value.toUpperCase().slice(0,6));setCodeReady(false);setPmCode("");}} placeholder="e.g. NWR"/>
             {fieldErr("projectCode")}
             {!errors.projectCode && projectCode && (
-              <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>
-                Login codes will be formatted: <span style={{ color:C.accentL, fontFamily:"monospace" }}>{projectCode}-XXXX</span>
-              </div>
+              <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>Login codes: <span style={{ color:C.accentL, fontFamily:"monospace" }}>{projectCode}-XXXX</span></div>
             )}
           </div>
-
-          {/* Divider */}
           <div style={{ borderTop:`1px solid ${C.border}`, margin:"4px 0 18px" }}/>
-
-          {/* ── Project Manager ── */}
-          <div style={{ fontSize:10, fontWeight:700, color:C.accentL, textTransform:"uppercase",
-            letterSpacing:".6px", marginBottom:12 }}>Project Manager</div>
-
+          <div style={{ fontSize:10, fontWeight:700, color:C.accentL, textTransform:"uppercase", letterSpacing:".6px", marginBottom:12 }}>Project Manager</div>
           <div style={{ marginBottom:16 }}>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim,
-              textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>
-              Full Name
-            </label>
-            <input style={{ ...inp, borderColor: errors.pmName ? C.risk : C.border }}
-              value={pmName}
-              onChange={e => { setPmName(e.target.value); setCodeReady(false); setPmCode(""); setErrors(p => ({...p, pmName:""})); }}
-              placeholder="e.g. Sarah Johnson"
-              onKeyDown={e => e.key === "Enter" && generateCode()}/>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>Full Name</label>
+            <input style={{ ...inp, borderColor:errors.pmName?C.risk:C.border }} value={pmName}
+              onChange={e=>{setPmName(e.target.value);setCodeReady(false);setPmCode("");setErrors(p=>({...p,pmName:""}));}}
+              placeholder="e.g. Sarah Johnson" onKeyDown={e=>e.key==="Enter"&&generateCode()}/>
             {fieldErr("pmName")}
           </div>
-
           <div style={{ marginBottom:20 }}>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim,
-              textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>
-              Login Code
-            </label>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".5px", marginBottom:7 }}>Login Code</label>
             {codeReady ? (
               <div>
                 <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                  <div style={{ flex:1, background:C.surface2, border:`1px solid ${C.accentL}66`,
-                    borderRadius:6, padding:"10px 13px", fontFamily:"monospace", fontSize:16,
-                    fontWeight:700, color:C.accentL, letterSpacing:".12em" }}>
-                    {pmCode}
-                  </div>
-                  <button onClick={() => { setCodeReady(false); setPmCode(""); }}
-                    style={{ padding:"10px 14px", background:"none", border:`1px solid ${C.border}`,
-                      borderRadius:6, color:C.muted, fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
-                    Regenerate
-                  </button>
+                  <div style={{ flex:1, background:C.surface2, border:`1px solid ${C.accentL}66`, borderRadius:6, padding:"10px 13px",
+                    fontFamily:"monospace", fontSize:16, fontWeight:700, color:C.accentL, letterSpacing:".12em" }}>{pmCode}</div>
+                  <button onClick={()=>{setCodeReady(false);setPmCode("");}}
+                    style={{ padding:"10px 14px", background:"none", border:`1px solid ${C.border}`, borderRadius:6, color:C.muted, fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>Regenerate</button>
                 </div>
-                <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>
-                  Share this code with the Project Manager to log in later.
-                </div>
+                <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>Share this code with the Project Manager to log in later.</div>
               </div>
             ) : (
-              <button onClick={generateCode}
-                style={{ width:"100%", padding:"10px", background:C.surface2,
-                  border:`1px solid ${C.accentL}55`,
-                  borderRadius:6, color:C.accentL,
-                  fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                Generate Login Code
-              </button>
+              <button onClick={generateCode} style={{ width:"100%", padding:"10px", background:C.surface2, border:`1px solid ${C.accentL}55`,
+                borderRadius:6, color:C.accentL, fontSize:12, fontWeight:700, cursor:"pointer" }}>Generate Login Code</button>
             )}
           </div>
-
           <button onClick={handleConfirm} disabled={!codeReady}
-            style={{ width:"100%", padding:"12px",
-              background: codeReady ? C.accent : "#1F4D34",
-              border:"none", borderRadius:7, color:"#fff", fontSize:13, fontWeight:700,
-              cursor: codeReady ? "pointer" : "not-allowed",
-              boxShadow: codeReady ? `0 4px 16px ${C.accent}44` : "none",
-              transition:"all .2s" }}>
-            Enter Project Setup →
-          </button>
+            style={{ width:"100%", padding:"12px", background:codeReady?C.accent:"#1F4D34", border:"none", borderRadius:7,
+              color:"#fff", fontSize:13, fontWeight:700, cursor:codeReady?"pointer":"not-allowed",
+              boxShadow:codeReady?`0 4px 16px ${C.accent}44`:"none", transition:"all .2s" }}>Enter Project Setup →</button>
         </div>
-
-        {/* Tier note */}
         <div style={{ textAlign:"center", marginTop:14, fontSize:11, color:C.muted }}>
-          <span style={{ color:C.dim }}>{tierCfg.label} tier</span>
-          {" · "}{tierCfg.sheets.length} sheets active
-          {" · "}<span style={{ color:C.accentL }}>PM · Full Access</span>
+          <span style={{ color:C.dim }}>{tierCfg.label} tier</span>{" · "}{tierCfg.sheets.length} sheets active{" · "}<span style={{ color:C.accentL }}>PM · Full Access</span>
         </div>
       </div>
       </div>
@@ -435,1109 +365,671 @@ function PMSetup({ tier, onConfirm, onBack }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onLaunch, onLogout, onL1Complete }) {
-  const { l2, l1, project } = state;
-  const tier     = state.projectTier; // "light" | "full" | null
-  const tierCfg  = tier ? TIERS[tier] : null;
+export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onLaunch, onLogout }) {
+  const { l2, project } = state;
+  const tier    = state.projectTier;
+  const tierCfg = tier ? TIERS[tier] : null;
+  const sheets  = l2?.sheets || {};
 
-  const [activeSheet,   setActiveSheet]   = useState("01");
-  const [dirtySheet,    setDirtySheet]    = useState(false);
-  const [savingPrompt,  setSavingPrompt]  = useState(null);
+  const isExisting = Object.values(sheets).some(s => s.status !== "empty") || (l2?.loginCodes||[]).length > 0;
+  const pmAlreadySet = (l2?.loginCodes||[]).some(m => m.isPM || m.role === "Project Manager");
 
-  // ── AI status indicator ───────────────────────────────────────────────────
-  const [aiStatus,      setAiStatus]      = useState("");
+  const [phase, setPhase] = useState(() => isExisting ? "done" : "intake");
+  const [aiStatus, setAiStatus] = useState("");
+  const [docAnalysis, setDocAnalysis] = useState("");
+  const [fileList, setFileList] = useState([]);
+  const [uploadMode, setUploadMode] = useState("file");
+  const [pasteText, setPasteText] = useState("");
+  const [extracting, setExtracting] = useState(false);
 
-  // ── Document intelligence state ───────────────────────────────────────────
-  const [uploadMode,    setUploadMode]    = useState("file");
-  const [pasteText,     setPasteText]     = useState("");
-  const [extracting,    setExtracting]    = useState(false);
-  const [extractMsg,    setExtractMsg]    = useState("");
-  const [fileList,      setFileList]      = useState([]);
+  const wizardSheetOrder = tierCfg ? scheduleLast(WIZARD_SHEETS[tier]) : [];
+  const [sheetIdx, setSheetIdx] = useState(0);
+  const [clusterIdx, setClusterIdx] = useState(0);
+  const [fieldAnswers, setFieldAnswers] = useState({});
+  const [aiChipSuggestions, setAiChipSuggestions] = useState({});
+  const [chipsLoading, setChipsLoading] = useState(false);
 
-  // ── Q&A state ─────────────────────────────────────────────────────────────
-  const [qaMessages,    setQaMessages]    = useState([]);
-  const [qaInput,       setQaInput]       = useState("");
-  const [qaLoading,     setQaLoading]     = useState(false);
-  const [currentQIdx,   setCurrentQIdx]   = useState(0);
-  const qaBottomRef = useRef(null);
+  const [activeSheet, setActiveSheet] = useState("01");
+  const [dirtySheet, setDirtySheet] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(null);
 
-  const sheets   = l2?.sheets || {};
-
-  // ── Blur / onboarding state — derived AFTER sheets is declared ────────────
-  // isExisting: project already has data (returning login), blur never shown
-  const isExisting = Object.values(sheets).some(s => s.status !== "empty") ||
-                     (l2?.loginCodes||[]).length > 0;
-  const [blurLifted,    setBlurLifted]    = useState(() => isExisting);
-  const [showRolePopup, setShowRolePopup] = useState(false);
-  const [selectedRoles, setSelectedRoles] = useState([]);
-  const questions = tierCfg?.questions || [];
-
-  // Auto-scroll Q&A to bottom
-  useEffect(() => {
-    qaBottomRef.current?.scrollIntoView({ behavior:"smooth" });
-  }, [qaMessages]);
-
-  // ── Q&A only starts after role selection (blur is lifted) — not on mount ──
-  // This prevents generic questions firing before the PM has done anything
-  // askQuestion is called explicitly from confirmRoles instead
-
-  // ── Check if a question's fields are already populated from extraction ─────
-  const areFieldsPopulated = (fields) => {
-    const c = sheets["01"]?.data?.charter || {};
-    const fieldMap = {
-      projectName:   c.projectName,
-      purpose:       c.purpose,
-      endDate:       c.endDate,
-      startDate:     c.startDate,
-      budget:        c.budget,
-      projectManager: c.projectManager,
-      projectSponsor: c.projectSponsor,
-      organisation:  c.organisation,
-      successCriteria: c.successCriteria,
-      team:          (sheets["02"]?.data?.teamMembers||[]).filter(m=>m.name).length > 0,
-      risks:         (sheets["05"]?.data?.risks||[]).length > 0,
-      deliverables:  (sheets["03"]?.data?.activities||[]).length > 0,
-      schedule:      (sheets["03"]?.data?.activities||[]).length > 0,
-      stakeholders:  (sheets["08"]?.data?.stakeholders||[]).length > 0,
-      benefits:      (sheets["07"]?.data?.deliverables||[]).length > 0,
-    };
-    // A question is "populated" if ALL its primary fields already have data
-    return fields.every(f => !!fieldMap[f]);
-  };
-
-  const askQuestion = async (idx) => {
-    if (!tierCfg || idx >= questions.length) return;
-    const q = questions[idx];
-
-    // Skip this question if its fields are already populated from document extraction
-    if (areFieldsPopulated(q.fields)) {
-      // Auto-advance to next unanswered question
-      const nextUnanswered = questions.findIndex((qq, i) => i > idx && !areFieldsPopulated(qq.fields));
-      if (nextUnanswered !== -1) {
-        askQuestion(nextUnanswered);
-      } else {
-        // All questions answered by extraction — notify and stop
-        setQaMessages(prev => [...prev, {
-          role: "system",
-          text: "✓ All key project fields have been populated from your uploaded documents. Review the sheets and make any adjustments needed.",
-        }]);
-      }
-      return;
-    }
-
-    setQaLoading(true);
-    setAiStatus(`Preparing question for missing field: ${q.fields.join(", ")}…`);
-    try {
-      const context = buildSheetContext();
-      const hasExtractedData = context.projectName || context.purpose || context.projectManager;
-
-      const prompt = `You are a project management assistant helping set up a ${tierCfg.label} project.
-
-CRITICAL: The PM has already uploaded project documents. Use the actual extracted project data below to give a SPECIFIC recommendation — never give a generic example.
-
-Extracted project data:
-- Project name: ${context.projectName || "not yet known"}
-- Purpose: ${context.purpose || "not yet extracted"}
-- PM: ${context.projectManager || "not yet extracted"}
-- Sponsor: ${context.projectSponsor || "not yet extracted"}
-- Start date: ${context.startDate || "not yet extracted"}
-- End date: ${context.endDate || "not yet extracted"}
-- Budget: ${context.budget || "not yet extracted"}
-- Activities found: ${context.activitiesCount}
-- Risks found: ${context.risksCount}
-- Team members found: ${context.teamCount}
-
-Question to ask: "${q.text}"
-Fields this will populate: ${q.fields.join(", ")}
-
-${hasExtractedData
-  ? "Based on the ACTUAL project data above, provide a specific recommendation for the missing field(s). Reference the real project name and context."
-  : "No document data yet — provide a helpful guiding question with a concise example."
-}
-
-Respond in JSON only, no markdown fences:
-{"recommendation":"specific recommendation grounded in actual project data","rationale":"one sentence why this matters for ${q.fields.join(", ")}","isAlreadyKnown":false}`;
-
-      const raw = await callExtract([{ role:"user", content:prompt }], 500);
-      let rec = { recommendation:"", rationale:"", isAlreadyKnown:false };
-      try { rec = safeParseJSON(raw); } catch(e) { rec = { recommendation: raw.slice(0,200), rationale:"" }; }
-
-      // If AI says the field is already known, skip
-      if (rec.isAlreadyKnown) {
-        setQaLoading(false);
-        setAiStatus("");
-        setCurrentQIdx(idx);
-        const next = questions.findIndex((qq, i) => i > idx && !areFieldsPopulated(qq.fields));
-        if (next !== -1) askQuestion(next);
-        return;
-      }
-
-      setQaMessages(prev => [...prev, {
-        role: "ai",
-        qId: q.id,
-        question: q.text,
-        fields: q.fields,
-        recommendation: rec.recommendation || "",
-        rationale: rec.rationale || "",
-        accepted: false,
-        userEdit: "",
-      }]);
-    } catch(err) {
-      setQaMessages(prev => [...prev, {
-        role: "ai", qId: q.id, question: q.text, fields: q.fields,
-        recommendation: "", rationale: "", accepted: false, userEdit: "",
-        error: err.message,
-      }]);
-    }
-    setQaLoading(false);
-    setAiStatus("");
-    setCurrentQIdx(idx);
-  };
-
-  const handleAccept = async (msgIdx) => {
-    const msg = qaMessages[msgIdx];
-    const answer = msg.userEdit || msg.recommendation;
-    setQaMessages(prev => prev.map((m,i) => i===msgIdx ? {...m, accepted:true} : m));
-    await applyAnswerToSheets(msg.fields, answer);
-    // Ask next question
-    if (currentQIdx + 1 < questions.length) {
-      askQuestion(currentQIdx + 1);
+  const getCharterField = (key) => sheets["01"]?.data?.charter?.[key] || "";
+  const isFieldKnown = (key) => {
+    switch(key) {
+      case "projectManager": return !!getCharterField("projectManager");
+      case "projectName":    return !!getCharterField("projectName");
+      case "organisation":   return !!getCharterField("organisation");
+      case "purpose":        return !!getCharterField("purpose");
+      case "projectSponsor": return !!getCharterField("projectSponsor");
+      case "startDate":      return !!getCharterField("startDate");
+      case "endDate":        return !!getCharterField("endDate");
+      case "budget":         return !!getCharterField("budget");
+      case "teamRoles":      return (sheets["02"]?.data?.teamMembers||[]).filter(m=>!m.isPM).length > 0;
+      case "risks":          return (sheets["05"]?.data?.risks||[]).length > 0;
+      case "stakeholders":   return (sheets["08"]?.data?.stakeholders||[]).length > 0;
+      case "benefits":       return (sheets["07"]?.data?.deliverables||[]).length > 0;
+      case "raciNote": case "changeThreshold": case "sustainFocus": case "keyMilestones":
+        return false;
+      default: return false;
     }
   };
 
-  const handleEdit = (msgIdx, value) => {
-    setQaMessages(prev => prev.map((m,i) => i===msgIdx ? {...m, userEdit:value} : m));
-  };
-
-  const handleSubmitEdit = async (msgIdx) => {
-    const msg = qaMessages[msgIdx];
-    const answer = msg.userEdit || msg.recommendation;
-    setQaMessages(prev => prev.map((m,i) => i===msgIdx ? {...m, accepted:true} : m));
-    await applyAnswerToSheets(msg.fields, answer);
-    if (currentQIdx + 1 < questions.length) {
-      askQuestion(currentQIdx + 1);
-    }
-  };
-
-  // Free-form Q&A input
-  const handleFreeInput = async () => {
-    if (!qaInput.trim()) return;
-    const userMsg = qaInput.trim();
-    setQaInput("");
-    setQaMessages(prev => [...prev, { role:"user", text:userMsg }]);
-    setQaLoading(true);
-    try {
-      const context = buildSheetContext();
-      const prompt = `You are a project management assistant. The PM has provided this information: "${userMsg}"
-Current project context: ${JSON.stringify(context)}
-Extract any useful project data from this input and recommend updates to the project sheets.
-Respond in JSON only, no markdown fences:
-{"recommendations":[{"sheet":"sheet name","field":"field name","value":"recommended value","reason":"brief reason"}],"reply":"brief conversational acknowledgement"}`;
-
-      const raw = await callExtract([{ role:"user", content:prompt }], 800);
-      let parsed = { recommendations:[], reply:"Got it." };
-      try { parsed = safeParseJSON(raw); } catch(e) {}
-
-      setQaMessages(prev => [...prev, {
-        role:"ai", text: parsed.reply || "I've noted that information.",
-        recommendations: parsed.recommendations || [],
-      }]);
-      // Apply recommendations
-      if (parsed.recommendations?.length > 0) {
-        applyRecommendationsList(parsed.recommendations);
-      }
-    } catch(err) {
-      setQaMessages(prev => [...prev, { role:"ai", text:`Sorry, I couldn't process that: ${err.message}` }]);
-    }
-    setQaLoading(false);
-  };
-
-  // ── Build a compact summary of current sheet state for AI context ─────────
-  const buildSheetContext = () => {
+  const buildContext = () => {
     const c = sheets["01"]?.data?.charter || {};
     return {
-      projectName: c.projectName || "",
-      purpose: c.purpose || "",
-      startDate: c.startDate || "",
-      endDate: c.endDate || "",
-      budget: c.budget || "",
-      projectManager: c.projectManager || "",
-      projectSponsor: c.projectSponsor || "",
-      teamCount: (sheets["02"]?.data?.teamMembers || []).length,
-      activitiesCount: (sheets["03"]?.data?.activities || []).length,
-      risksCount: (sheets["05"]?.data?.risks || []).length,
+      projectName: c.projectName||"", purpose: c.purpose||"", organisation: c.organisation||"",
+      projectManager: c.projectManager||"", endDate: c.endDate||"",
+      teamCount: (sheets["02"]?.data?.teamMembers||[]).length,
+      riskCount: (sheets["05"]?.data?.risks||[]).length,
     };
   };
 
-  // ── Apply a Q&A answer to the relevant sheet fields ───────────────────────
-  const applyAnswerToSheets = async (fields, answer) => {
-    if (!fields?.length || !answer) return;
-    try {
-      const context = buildSheetContext();
-      const prompt = `You are mapping a project manager's answer to structured sheet fields.
-Answer: "${answer}"
-Fields to populate: ${JSON.stringify(fields)}
-Current context: ${JSON.stringify(context)}
-Tier: ${tier}
+  const currentSheetId = wizardSheetOrder[sheetIdx];
+  const allClustersForSheet = CLUSTERS[currentSheetId] || [];
+  const visibleClusters = allClustersForSheet.filter(cl =>
+    cl.fields.some(f => f.optional || !isFieldKnown(f.key))
+  );
+  const currentCluster = visibleClusters[clusterIdx];
 
-Respond in JSON only, no markdown fences. Map the answer to these possible fields:
-- projectName, purpose, endDate, startDate, budget, projectManager, projectSponsor, organisation (go into sheet 01 charter)
-- team (array of {name,role} objects, sheet 02)
-- activities (array of {name,phase,targetDate}, sheet 03)
-- risks (array of {name,likelihood,impact,response}, sheet 05)
-- stakeholders (array of {name,category,interest}, sheet 08)
-- benefits (objectives array for sheet 07)
-- changeControl (thresholds for sheet 06)
-- successCriteria (string, sheet 01)
+  const totalFieldsKnown = () => {
+    let known = 0, total = 0;
+    Object.values(CLUSTERS).forEach(clusters => clusters.forEach(cl => cl.fields.forEach(f => {
+      total++; if (isFieldKnown(f.key)) known++;
+    })));
+    return { known, total };
+  };
 
-Return only the fields that have data:
-{"charter":{},"team":[],"activities":[],"risks":[],"stakeholders":[],"benefits":[],"successCriteria":""}`;
+  const runExtraction = async (text, source) => {
+    setAiStatus(`Understanding ${source}…`);
+    const intelPrompt = `Analyse this document in 3-4 sentences: what type of document is it, what project info does it contain, how is it structured (columns, sections, ID patterns), any special notation.
+Document: ${source}
+Content: ${text.slice(0,3000)}`;
+    let analysis = "";
+    try { analysis = await callExtract([{role:"user",content:intelPrompt}], 500); }
+    catch(e) { analysis = "General document — extracting available project data."; }
+    setDocAnalysis(analysis);
 
-      const raw = await callExtract([{ role:"user", content:prompt }], 1000);
-      let mapped = {};
-      try { mapped = safeParseJSON(raw); } catch(e) { return; }
+    setAiStatus(`Extracting project data from ${source}…`);
+    const MAX = 24000;
+    const chunk = text.slice(0, MAX);
+    const isExcel = source.toLowerCase().match(/\.xlsx?$/);
 
-      // Apply to sheet 01 — charter
-      if (mapped.charter && Object.keys(mapped.charter).length > 0) {
-        const existing = sheets["01"]?.data?.charter || {};
-        const merged   = { ...mapped.charter };
-        // PM edits always win — don't overwrite non-empty fields
-        Object.keys(merged).forEach(k => { if (existing[k]) merged[k] = existing[k]; });
-        onSheetUpdate("01", { charter: { ...existing, ...merged } }, "ai-draft");
-      }
-      if (mapped.successCriteria && !sheets["01"]?.data?.charter?.successCriteria) {
-        const existing = sheets["01"]?.data?.charter || {};
-        onSheetUpdate("01", { charter: { ...existing, successCriteria: mapped.successCriteria } }, "ai-draft");
-      }
-      // Apply to sheet 02 — team
-      if (mapped.team?.length > 0) {
-        const existing = sheets["02"]?.data?.teamMembers || [];
-        if (existing.length === 0) {
-          const newMembers = mapped.team.map((m,i) => ({
-            _id: `TM-${String(i+1).padStart(3,"0")}`, name:m.name||"", role:m.role||"",
-            loginCode:"", deliveryRole:"", availability:"", location:"", responsibilities:"",
-          }));
-          onSheetUpdate("02", { teamMembers: newMembers }, "ai-draft");
-        }
-      }
-      // Apply to sheet 03 — activities
-      if (mapped.activities?.length > 0) {
-        const existing = sheets["03"]?.data?.activities || [];
-        if (existing.length === 0) {
-          const acts = mapped.activities.map((a,i) => ({
-            _id:`ACT-${String(i+1).padStart(3,"0")}`, name:a.name||"",
-            phase:a.phase||"Definition", targetDate:a.targetDate||"", _complete:false,
-          }));
-          onSheetUpdate("03", { activities: acts }, "ai-draft");
-        }
-      }
-      // Apply to sheet 05 — risks
-      if (mapped.risks?.length > 0) {
-        const existing = sheets["05"]?.data?.risks || [];
-        if (existing.length === 0) {
-          const risks = mapped.risks.map((r,i) => ({
-            _id:`R-${String(101+i)}`, name:r.name||"", likelihood:r.likelihood||"2",
-            impact:r.impact||"2", response:r.response||"Reduce", mitigation:"", category:"",
-          }));
-          onSheetUpdate("05", { risks }, "ai-draft");
-        }
-      }
-      // Apply to sheet 08 — stakeholders (full tier only)
-      if (tier === "full" && mapped.stakeholders?.length > 0) {
-        const existing = sheets["08"]?.data?.stakeholders || [];
-        if (existing.length === 0) {
-          const shs = mapped.stakeholders.map((s,i) => ({
-            _id:`SH-${String(i+1).padStart(3,"0")}`, name:s.name||"",
-            category:s.category||"", interest:s.interest||"", power:5, influence:5, ease:5,
-          }));
-          onSheetUpdate("08", { stakeholders: shs }, "ai-draft");
-        }
-      }
-    } catch(err) {
-      console.error("applyAnswerToSheets:", err.message);
+    const prompt = `You are an expert PM extracting structured data from a project document.
+DOCUMENT ANALYSIS: ${analysis}
+SOURCE: ${source}
+${isExcel ? "Note: numeric-letter IDs (A01,B02) are individual tasks to extract as activities; single-letter IDs (A,B,C) are phase headers — use for phase field, do not extract as activities themselves." : ""}
+
+CONTENT:
+${chunk}
+
+Extract REAL data only, never invent placeholders. Leave fields empty if not found. Dates as YYYY-MM-DD (Excel serial N = days since 1900-01-01).
+Return ONLY JSON, no markdown:
+{"charter":{"projectName":"","purpose":"","problemStatement":"","startDate":"","endDate":"","budget":"","projectManager":"","projectSponsor":"","organisation":""},"team":[{"name":"","role":""}],"activities":[{"name":"","phase":"","startDate":"","targetDate":"","_complete":false,"plannedCost":""}],"milestones":[{"name":"","phase":"","targetDate":"","_complete":false}],"risks":[{"name":"","cause":"","potentialImpact":"","likelihood":"2","impact":"2","response":"Reduce","mitigation":"","category":""}],"stakeholders":[{"name":"","category":"","power":"5","interest":"5","influence":"5"}],"benefits":[{"name":"","category":"","owner":"","targetDate":""}]}`;
+
+    const raw = await callExtract([{role:"user",content:prompt}], 8000);
+    const extracted = safeParseJSON(raw);
+
+    if (extracted.charter) {
+      const c = sheets["01"]?.data?.charter || {};
+      const updates = {};
+      Object.entries(extracted.charter).forEach(([k,v]) => { if (v && !c[k]) updates[k]=v; });
+      if (Object.keys(updates).length) onSheetUpdate("01", { charter:{...c,...updates} }, "ai-draft");
     }
-  };
-
-  const applyRecommendationsList = (recs) => {
-    recs.forEach(rec => {
-      if (!rec.sheet || !rec.field || !rec.value) return;
-      // Simple field mapping — extend as needed
-      if (rec.sheet.includes("charter") || rec.sheet === "01") {
-        const existing = sheets["01"]?.data?.charter || {};
-        if (!existing[rec.field]) {
-          onSheetUpdate("01", { charter: { ...existing, [rec.field]: rec.value } }, "ai-draft");
-        }
+    const existingTeam = sheets["02"]?.data?.teamMembers || [];
+    if (extracted.team?.length) {
+      const newM = extracted.team.filter(m=>m.name && !existingTeam.some(e=>e.name?.toLowerCase()===m.name.toLowerCase()))
+        .map((m,i)=>({_id:`TM-${String(existingTeam.length+i+1).padStart(3,"0")}`,name:m.name,role:m.role||"",deliveryRole:"",availability:"",loginCode:"",location:"",responsibilities:""}));
+      if (newM.length) onSheetUpdate("02", { teamMembers:[...existingTeam,...newM] }, "ai-draft");
+    }
+    const existingActs = sheets["03"]?.data?.activities || [];
+    const existingMiles = sheets["03"]?.data?.milestones || [];
+    if (extracted.activities?.length) {
+      const newA = extracted.activities.filter(a=>a.name && !existingActs.some(e=>e.name?.toLowerCase().trim()===a.name.toLowerCase().trim()))
+        .map((a,i)=>({_id:`ACT-${String(existingActs.length+i+1).padStart(3,"0")}`,name:a.name,phase:a.phase||"",startDate:a.startDate||"",targetDate:a.targetDate||"",responsible:"",_complete:a._complete||false,plannedCost:a.plannedCost||""}));
+      if (newA.length) onSheetUpdate("03", { activities:[...existingActs,...newA], milestones:existingMiles }, "ai-draft");
+    }
+    if (extracted.milestones?.length) {
+      const newMs = extracted.milestones.filter(m=>m.name && !existingMiles.some(e=>e.name?.toLowerCase().trim()===m.name.toLowerCase().trim()))
+        .map((m,i)=>({_id:`MS-${String(existingMiles.length+i+1).padStart(3,"0")}`,name:m.name,phase:m.phase||"",targetDate:m.targetDate||"",_complete:m._complete||false}));
+      if (newMs.length) { const acts=sheets["03"]?.data?.activities||[]; onSheetUpdate("03", { activities:acts, milestones:[...existingMiles,...newMs] }, "ai-draft"); }
+    }
+    const existingRisks = sheets["05"]?.data?.risks || [];
+    if (extracted.risks?.length) {
+      const newR = extracted.risks.filter(r=>r.name && !existingRisks.some(e=>e.name?.toLowerCase().trim()===r.name.toLowerCase().trim()))
+        .map((r,i)=>({_id:`R-${String(101+existingRisks.length+i)}`,name:r.name,cause:r.cause||"",potentialImpact:r.potentialImpact||"",likelihood:r.likelihood||"2",impact:r.impact||"2",response:r.response||"Reduce",mitigation:r.mitigation||"",category:r.category||""}));
+      if (newR.length) onSheetUpdate("05", { risks:[...existingRisks,...newR] }, "ai-draft");
+    }
+    if (tier === "full") {
+      const existingSH = sheets["08"]?.data?.stakeholders || [];
+      if (extracted.stakeholders?.length) {
+        const newSH = extracted.stakeholders.filter(s=>s.name && !existingSH.some(e=>e.name?.toLowerCase()===s.name.toLowerCase()))
+          .map((s,i)=>({_id:`SH-${String(existingSH.length+i+1).padStart(3,"0")}`,name:s.name,category:s.category||"",power:parseInt(s.power)||5,interest:parseInt(s.interest)||5,influence:parseInt(s.influence)||5,ease:5,engagementStrategy:""}));
+        if (newSH.length) onSheetUpdate("08", { stakeholders:[...existingSH,...newSH] }, "ai-draft");
       }
-    });
-  };
-
-  // ── Document extraction ───────────────────────────────────────────────────
-  // ── Excel date serial → ISO date ──────────────────────────────────────────
-  const excelDateToISO = (serial) => {
-    if (!serial || isNaN(serial)) return "";
-    const date = new Date((serial - 25569) * 86400 * 1000);
-    if (isNaN(date.getTime())) return "";
-    return date.toISOString().slice(0, 10);
-  };
-
-  // ── Parse Excel schedule directly into structured activities ─────────────
-  // Instead of sending raw tab-separated text to AI, we parse it here so
-  // the AI receives clean structured JSON and doesn't misinterpret phase headers
-  const parseExcelSchedule = async (file) => {
-    const XLSX = await import("xlsx");
-    const buf  = await file.arrayBuffer();
-    const wb   = XLSX.read(buf, { type:"array", cellDates:false });
-
-    let bestSheet = null;
-    let bestScore = 0;
-
-    // Find the sheet with the most activity rows (has ID + Task + dates)
-    wb.SheetNames.forEach(name => {
-      const ws   = wb.Sheets[name];
-      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
-      const score = rows.filter(r => {
-        const id   = String(r[0]||"").trim();
-        const task = String(r[1]||"").trim();
-        // Row looks like an activity if ID has a number (A01, B02, etc.) and task name is non-empty
-        return /^[A-Z]\d+/.test(id) && task.length > 2;
-      }).length;
-      if (score > bestScore) { bestScore = score; bestSheet = name; }
-    });
-
-    if (!bestSheet) return null; // Not a schedule format — fall through to AI
-
-    const ws   = wb.Sheets[bestSheet];
-    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
-
-    // Find header row
-    let idCol=0, taskCol=1, startCol=2, endCol=3, costCol=4, progressCol=7;
-    for (let ri = 0; ri < Math.min(rows.length, 15); ri++) {
-      const r = rows[ri].map(c => String(c||"").toLowerCase().trim());
-      if (r.some(c => c.includes("task") || c.includes("activity"))) {
-        r.forEach((c,ci) => {
-          if (c.includes("id"))                           idCol       = ci;
-          if (c.includes("task") || c.includes("activity")) taskCol   = ci;
-          if (c.includes("start"))                        startCol    = ci;
-          if (c.includes("end") || c.includes("finish"))  endCol      = ci;
-          if (c.includes("cost") || c.includes("amount") || c.includes("financial")) costCol = ci;
-          if (c.includes("progress") || c.includes("complete")) progressCol = ci;
-        });
-        break;
+      const existingDels = sheets["07"]?.data?.deliverables || [];
+      if (extracted.benefits?.length) {
+        const newD = extracted.benefits.filter(b=>b.name && !existingDels.some(e=>e.name?.toLowerCase()===b.name.toLowerCase()))
+          .map((b,i)=>({_id:`D-${String(existingDels.length+i+1).padStart(3,"0")}`,name:b.name,phase:b.category||"",deadlineV1:b.targetDate||"",notes:"",kpis:[],linkedObjectiveId:"",priority:""}));
+        if (newD.length) onSheetUpdate("07", { deliverables:[...existingDels,...newD] }, "ai-draft");
       }
     }
-
-    // Track current phase from single-letter rows
-    let currentPhase = "";
-    const phaseMap = { A:"Concept", B:"Definition", C:"Development", D:"Execution", E:"Handover & Closeout" };
-    const activities = [];
-    const milestones = [];
-
-    rows.forEach(row => {
-      const id       = String(row[idCol]||"").trim();
-      const taskName = String(row[taskCol]||"").trim();
-      const rawStart = row[startCol];
-      const rawEnd   = row[endCol];
-      const cost     = row[costCol];
-      const progress = row[progressCol];
-
-      if (!id || !taskName || taskName.length < 2) return;
-
-      // Single letter = phase header
-      if (/^[A-Z]$/.test(id)) {
-        currentPhase = phaseMap[id] || taskName;
-        return;
-      }
-
-      // Skip rows that look like cost ledger items (have account codes)
-      if (/^[A-Z]{3}-\d+/.test(String(row[row.length-1]||""))) return;
-
-      const startDate = typeof rawStart === "number" ? excelDateToISO(rawStart) : String(rawStart||"").trim();
-      const endDate   = typeof rawEnd   === "number" ? excelDateToISO(rawEnd)   : String(rawEnd||"").trim();
-      const isComplete = parseFloat(String(progress||"0")) >= 0.95;
-      const plannedCost = typeof cost === "number" && cost > 0 ? String(cost) : "";
-
-      // Treat as milestone if duration is 0 or task name contains milestone keywords
-      const isMilestone = startDate === endDate ||
-        /milestone|gate|review|sign.?off|approval|launch/i.test(taskName);
-
-      if (isMilestone) {
-        milestones.push({
-          _id: `MS-${String(milestones.length+1).padStart(3,"0")}`,
-          name: taskName, phase: currentPhase,
-          targetDate: endDate || startDate, _complete: isComplete,
-        });
-      } else {
-        activities.push({
-          _id: `ACT-${String(activities.length+1).padStart(3,"0")}`,
-          name: taskName, phase: currentPhase,
-          startDate, targetDate: endDate,
-          responsible: "", _complete: isComplete,
-          plannedCost,
-        });
-      }
-    });
-
-    return { activities, milestones, sheetName: bestSheet };
-  };
-
-  // ── Read Excel file as text fallback for non-schedule files ──────────────
-  const readExcelAsText = async (file) => {
-    const XLSX = await import("xlsx");
-    const buf  = await file.arrayBuffer();
-    const wb   = XLSX.read(buf, { type:"array", cellDates:false });
-    let output = `EXCEL FILE: ${file.name}\n\n`;
-    wb.SheetNames.slice(0, 3).forEach(sheetName => {
-      const ws   = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
-      output += `--- Sheet: ${sheetName} ---\n`;
-      rows.slice(0, 100).forEach(row => {
-        const cells = row.map(cell => {
-          if (typeof cell === "number" && cell > 40000 && cell < 60000) return excelDateToISO(cell);
-          return String(cell).trim();
-        }).filter(c => c !== "");
-        if (cells.length > 0) output += cells.join("\t") + "\n";
-      });
-      output += "\n";
-    });
-    return output;
+    setAiStatus("");
   };
 
   const handleFileUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files||[]);
     if (!files.length) return;
     setExtracting(true);
-
     for (const file of files) {
-      setExtractMsg(`Processing ${file.name}…`);
       setAiStatus(`Reading ${file.name}…`);
       try {
         let text = "";
         const name = file.name.toLowerCase();
-
         if (name.endsWith(".docx")) {
           const buf = await file.arrayBuffer();
-          const rawRes = await mammoth.extractRawText({ arrayBuffer: buf });
-          text = rawRes.value.replace(/\n{3,}/g, "\n\n").trim();
-
+          const res = await mammoth.extractRawText({ arrayBuffer: buf });
+          text = res.value.replace(/\n{3,}/g,"\n\n").trim();
         } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
           text = await readExcelAsText(file);
-
         } else {
           text = await file.text();
         }
-
-        if (!text.trim()) {
-          setExtractMsg(`⚠ ${file.name} appears to be empty or unreadable.`);
-          continue;
-        }
-
+        if (!text.trim()) continue;
         setFileList(prev => [...prev, file.name]);
         await runExtraction(text, file.name);
-
       } catch(err) {
-        setExtractMsg(`⚠ Error reading ${file.name}: ${err.message}`);
+        setAiStatus(`⚠ ${file.name}: ${err.message}`);
       }
     }
-
     setExtracting(false);
     setAiStatus("");
-    setExtractMsg("✓ Extraction complete — review sheets for populated data.");
     e.target.value = "";
   };
 
   const handleTextExtract = async () => {
     if (!pasteText.trim()) return;
     setExtracting(true);
-    setExtractMsg("Extracting from text…");
-    try {
-      await runExtraction(pasteText, "pasted text");
-      setPasteText("");
-      setExtractMsg("✓ Text processed. Recommendations applied.");
-    } catch(err) {
-      setExtractMsg(`⚠ ${err.message}`);
-    }
+    try { await runExtraction(pasteText, "your notes"); setPasteText(""); }
+    catch(err) { setAiStatus(`⚠ ${err.message}`); }
     setExtracting(false);
   };
 
-  const runExtraction = async (text, source) => {
-    setAiStatus(`Reading ${source}…`);
+  const enterWizard = () => {
+    setPhase("wizard");
+    setSheetIdx(0);
+    setClusterIdx(0);
+  };
 
-    const MAX_CHARS = 24000;
-    const chunk     = text.slice(0, MAX_CHARS);
-    const truncated = text.length > MAX_CHARS;
-
-    // ── STEP 1: Document intelligence — understand structure before extracting ──
-    setAiStatus(`Understanding document structure of ${source}…`);
-    let docIntelligence = "";
-    try {
-      const intelligencePrompt = `You are a project management expert. Analyse this document and describe its structure in 3-5 sentences.
-
-Document: ${source}
-Content (first 3000 chars):
-${text.slice(0, 3000)}
-
-Describe:
-1. What TYPE of document is this? (e.g. project schedule, project brief, risk register, stakeholder map, meeting minutes, charter template, resource plan, etc.)
-2. What PROJECT INFORMATION does it contain? (e.g. task names with dates, team members, risks, objectives, budget)
-3. How is it STRUCTURED? (e.g. "rows have ID, task name, start date, end date columns", "sections with headings for each knowledge area", "table with risk descriptions and scores")
-4. Any SPECIAL PATTERNS to note? (e.g. "phase headers are single letters A/B/C before numbered sub-tasks", "tasks numbered 1.1/1.2", "dates are in DD/MM/YYYY format", "costs in column 5")
-
-Be specific and concise. This analysis will guide data extraction.`;
-
-      docIntelligence = await callExtract([{ role:"user", content:intelligencePrompt }], 600);
-    } catch(e) {
-      docIntelligence = "Document structure analysis unavailable — proceeding with general extraction.";
+  const advanceWizard = () => {
+    const nextClusterIdx = clusterIdx + 1;
+    if (nextClusterIdx < visibleClusters.length) {
+      setClusterIdx(nextClusterIdx);
+      return;
     }
-
-    setQaMessages(prev => [...prev, {
-      role:"system",
-      text:`📄 Analysing ${source}: ${docIntelligence.slice(0, 200)}${docIntelligence.length > 200 ? "…" : ""}`,
-    }]);
-
-    // ── STEP 2: Build current project state snapshot for enrichment + conflict detection ──
-    const currentState = {
-      charter:      sheets["01"]?.data?.charter || {},
-      teamCount:    (sheets["02"]?.data?.teamMembers||[]).filter(m=>m.name).length,
-      actCount:     (sheets["03"]?.data?.activities||[]).length,
-      riskCount:    (sheets["05"]?.data?.risks||[]).length,
-      stakeholders: (sheets["08"]?.data?.stakeholders||[]).length,
-      previousFiles: fileList,
-    };
-    const hasExistingData = currentState.actCount > 0 || currentState.riskCount > 0 ||
-                            Object.values(currentState.charter).some(v => v);
-
-    // ── STEP 3: Extraction informed by document intelligence ──────────────────
-    setAiStatus(`Extracting project data from ${source}…`);
-    const extractionPrompt = `You are an expert project manager extracting structured data from a project document.
-
-DOCUMENT ANALYSIS (from Step 1):
-${docIntelligence}
-
-EXISTING PROJECT DATA (already extracted from previous files):
-${JSON.stringify({
-  projectName: currentState.charter.projectName || "none",
-  projectManager: currentState.charter.projectManager || "none",
-  endDate: currentState.charter.endDate || "none",
-  activitiesAlreadyExtracted: currentState.actCount,
-  risksAlreadyExtracted: currentState.riskCount,
-})}
-
-SOURCE FILE: ${source}
-${truncated ? `NOTE: Truncated to ${MAX_CHARS} chars.` : ""}
-
-FULL DOCUMENT:
-${chunk}
-
-EXTRACTION INSTRUCTIONS:
-1. Use the document analysis above to understand the structure — apply it to extract correctly regardless of template or format.
-2. Extract REAL data only — actual names, dates, task names from the document. Never invent or use generic placeholders.
-3. For every piece of data, assign a confidence: "high" (explicitly stated), "medium" (inferred from context), "low" (uncertain).
-4. CROSS-DOCUMENT ENRICHMENT: If existing data is present above, ADD to it — extract data that fills gaps, don't repeat what's already there.
-5. CONFLICT DETECTION: If this document states something DIFFERENT from existing data (e.g. a different end date), flag it in the conflicts array.
-6. For dates: convert to YYYY-MM-DD. Excel date serials (numbers like 45588) = days since 1900-01-01, subtract 25569 and multiply by 86400000 milliseconds to get real date.
-7. For schedules/task lists: extract EVERY individual task/activity. Use document structure patterns to distinguish tasks from section headers.
-8. Leave fields as empty string/array if not found — do not fill with examples.
-
-Return ONLY valid JSON, no markdown, no preamble:
-{
-  "documentType": "brief description of what this document is",
-  "charter": {
-    "projectName": {"value":"","confidence":"high|medium|low"},
-    "purpose": {"value":"","confidence":"high|medium|low"},
-    "problemStatement": {"value":"","confidence":"high|medium|low"},
-    "startDate": {"value":"","confidence":"high|medium|low"},
-    "endDate": {"value":"","confidence":"high|medium|low"},
-    "budget": {"value":"","confidence":"high|medium|low"},
-    "projectManager": {"value":"","confidence":"high|medium|low"},
-    "projectSponsor": {"value":"","confidence":"high|medium|low"},
-    "organisation": {"value":"","confidence":"high|medium|low"},
-    "strategicAlignment": {"value":"","confidence":"high|medium|low"}
-  },
-  "team": [{"name":"","role":"","confidence":"high|medium|low"}],
-  "activities": [{"name":"","phase":"","startDate":"","targetDate":"","responsible":"","_complete":false,"plannedCost":"","confidence":"high|medium|low"}],
-  "milestones": [{"name":"","phase":"","targetDate":"","_complete":false,"confidence":"high|medium|low"}],
-  "risks": [{"name":"","cause":"","potentialImpact":"","likelihood":"2","impact":"2","response":"Reduce","mitigation":"","category":"","confidence":"high|medium|low"}],
-  "deliverables": [{"name":"","phase":"","targetDate":"","confidence":"high|medium|low"}],
-  "stakeholders": [{"name":"","category":"","power":"5","interest":"5","influence":"5","engagementStrategy":"","confidence":"high|medium|low"}],
-  "benefits": [{"name":"","category":"","owner":"","targetDate":"","confidence":"high|medium|low"}],
-  "conflicts": [{"field":"","existingValue":"","newValue":"","description":""}],
-  "gaps": ["list of important project fields that could not be found in this document"]
-}`;
-
-    const raw = await callExtract([{ role:"user", content:extractionPrompt }], 8000);
-    let extracted = {};
-    try {
-      extracted = safeParseJSON(raw);
-    } catch(err) {
-      throw new Error(`Could not parse extraction: ${err.message}`);
+    const nextSheetIdx = sheetIdx + 1;
+    if (nextSheetIdx < wizardSheetOrder.length) {
+      setSheetIdx(nextSheetIdx);
+      setClusterIdx(0);
+      return;
     }
+    setPhase("done");
+    setActiveSheet(tierCfg.sheets[0]);
+  };
 
-    // ── STEP 4: Apply extracted data with confidence signalling ──────────────
-    // Charter fields — apply with confidence flags, PM edits always win
-    if (extracted.charter) {
-      const c       = sheets["01"]?.data?.charter || {};
-      const updates = {};
-      const needsReview = [];
-
-      Object.entries(extracted.charter).forEach(([key, obj]) => {
-        if (!obj?.value) return;
-        if (c[key]) return; // PM edit wins
-        updates[key] = obj.value;
-        if (obj.confidence === "low") needsReview.push(key);
-      });
-
-      if (Object.keys(updates).length > 0) {
-        onSheetUpdate("01", {
-          charter: { ...c, ...updates },
-          ...(needsReview.length > 0 ? { _needsReview: needsReview } : {}),
-        }, "ai-draft");
-      }
+  const goBackWizard = () => {
+    if (clusterIdx > 0) { setClusterIdx(clusterIdx - 1); return; }
+    if (sheetIdx > 0) {
+      const prevSheetId = wizardSheetOrder[sheetIdx-1];
+      const prevClusters = (CLUSTERS[prevSheetId]||[]).filter(cl => cl.fields.some(f=>f.optional||!isFieldKnown(f.key)));
+      setSheetIdx(sheetIdx - 1);
+      setClusterIdx(Math.max(0, prevClusters.length - 1));
+      return;
     }
+    setPhase("intake");
+  };
 
-    // Team — enrich existing, add new members
-    const existingTeam = sheets["02"]?.data?.teamMembers || [];
-    if (extracted.team?.length > 0) {
-      const newMembers = extracted.team
-        .filter(m => m.name && !existingTeam.some(e =>
-          e.name?.toLowerCase() === m.name.toLowerCase()
-        ))
-        .map((m,i) => ({
-          _id: `TM-${String(existingTeam.length+i+1).padStart(3,"0")}`,
-          name: m.name, role: m.role||"",
-          deliveryRole:"", availability:"", loginCode:"", location:"", responsibilities:"",
-          _confidence: m.confidence || "high",
-        }));
-      if (newMembers.length > 0) {
-        onSheetUpdate("02", { teamMembers: [...existingTeam, ...newMembers] }, "ai-draft");
-      }
+  const saveFieldAnswer = (key, value) => {
+    setFieldAnswers(prev => ({ ...prev, [key]: value }));
+    if (["projectManager","projectName","organisation","purpose","projectSponsor","startDate","endDate","budget"].includes(key)) {
+      const c = sheets["01"]?.data?.charter || {};
+      onSheetUpdate("01", { charter: { ...c, [key]: value } }, "in-progress");
+      return;
     }
-
-    // Activities — enrich, add new, don't duplicate
-    const existingActs  = sheets["03"]?.data?.activities || [];
-    const existingMiles = sheets["03"]?.data?.milestones || [];
-    if (extracted.activities?.length > 0) {
-      const newActs = extracted.activities
-        .filter(a => a.name && !existingActs.some(e =>
-          e.name?.toLowerCase().trim() === a.name.toLowerCase().trim()
-        ))
-        .map((a,i) => ({
-          _id: `ACT-${String(existingActs.length+i+1).padStart(3,"0")}`,
-          name:a.name, phase:a.phase||"", startDate:a.startDate||"",
-          targetDate:a.targetDate||"", responsible:a.responsible||"",
-          _complete:a._complete||false, plannedCost:a.plannedCost||"",
-          _confidence: a.confidence || "high",
-        }));
-      if (newActs.length > 0 || existingActs.length === 0) {
-        onSheetUpdate("03", {
-          activities: [...existingActs, ...newActs],
-          milestones: existingMiles,
-        }, "ai-draft");
-      }
-    }
-
-    if (extracted.milestones?.length > 0) {
-      const newMiles = extracted.milestones
-        .filter(m => m.name && !existingMiles.some(e =>
-          e.name?.toLowerCase().trim() === m.name.toLowerCase().trim()
-        ))
-        .map((m,i) => ({
-          _id: `MS-${String(existingMiles.length+i+1).padStart(3,"0")}`,
-          name:m.name, phase:m.phase||"",
-          targetDate:m.targetDate||"", _complete:m._complete||false,
-          _confidence: m.confidence || "high",
-        }));
-      if (newMiles.length > 0) {
-        const currentActs = sheets["03"]?.data?.activities || [];
-        onSheetUpdate("03", { activities: currentActs, milestones: [...existingMiles, ...newMiles] }, "ai-draft");
-      }
-    }
-
-    // Risks — enrich
-    const existingRisks = sheets["05"]?.data?.risks || [];
-    if (extracted.risks?.length > 0) {
-      const newRisks = extracted.risks
-        .filter(r => r.name && !existingRisks.some(e =>
-          e.name?.toLowerCase().trim() === r.name.toLowerCase().trim()
-        ))
-        .map((r,i) => ({
-          _id:`R-${String(101+existingRisks.length+i)}`,
-          name:r.name, cause:r.cause||"", potentialImpact:r.potentialImpact||"",
-          likelihood:r.likelihood||"2", impact:r.impact||"2",
-          response:r.response||"Reduce", mitigation:r.mitigation||"", category:r.category||"",
-          _confidence: r.confidence || "high",
-        }));
-      if (newRisks.length > 0) {
-        onSheetUpdate("05", { risks: [...existingRisks, ...newRisks] }, "ai-draft");
-      }
-    }
-
-    // Stakeholders and deliverables (full tier)
-    if (tier === "full") {
-      const existingSH = sheets["08"]?.data?.stakeholders || [];
-      if (extracted.stakeholders?.length > 0) {
-        const newSH = extracted.stakeholders
-          .filter(s => s.name && !existingSH.some(e => e.name?.toLowerCase() === s.name.toLowerCase()))
-          .map((s,i) => ({
-            _id:`SH-${String(existingSH.length+i+1).padStart(3,"0")}`,
-            name:s.name, category:s.category||"",
-            power:parseInt(s.power)||5, interest:parseInt(s.interest)||5,
-            influence:parseInt(s.influence)||5, ease:5,
-            engagementStrategy:s.engagementStrategy||"",
-            _confidence: s.confidence || "high",
-          }));
-        if (newSH.length > 0) onSheetUpdate("08", { stakeholders:[...existingSH,...newSH] }, "ai-draft");
-      }
-      const existingDels = sheets["07"]?.data?.deliverables || [];
-      if (extracted.deliverables?.length > 0) {
-        const newDels = extracted.deliverables
-          .filter(d => d.name && !existingDels.some(e => e.name?.toLowerCase() === d.name.toLowerCase()))
-          .map((d,i) => ({
-            _id:`D-${String(existingDels.length+i+1).padStart(3,"0")}`,
-            name:d.name, phase:d.phase||"", deadlineV1:d.targetDate||"",
-            notes:"", kpis:[], linkedObjectiveId:"", priority:"",
-            _confidence: d.confidence || "high",
-          }));
-        if (newDels.length > 0) onSheetUpdate("07", { deliverables:[...existingDels,...newDels] }, "ai-draft");
-      }
-    }
-
-    // ── STEP 5: Surface conflicts and gaps to the PM via Q&A ─────────────────
-    const conflicts = extracted.conflicts || [];
-    const gaps      = extracted.gaps || [];
-
-    // Build rich summary message
-    const counts = [
-      extracted.activities?.length && `${extracted.activities.length} activities`,
-      extracted.milestones?.length && `${extracted.milestones.length} milestones`,
-      extracted.risks?.length && `${extracted.risks.length} risks`,
-      extracted.team?.length && `${extracted.team.length} team members`,
-      extracted.stakeholders?.length && `${extracted.stakeholders.length} stakeholders`,
-    ].filter(Boolean).join(", ");
-
-    setQaMessages(prev => [...prev, {
-      role:"system",
-      text:`✓ ${extracted.documentType || "Document"} — extracted: ${counts || "see sheets"}`,
-    }]);
-
-    // Surface conflicts
-    if (conflicts.length > 0) {
-      conflicts.forEach(conflict => {
-        setQaMessages(prev => [...prev, {
-          role:"conflict",
-          field:        conflict.field,
-          existingValue: conflict.existingValue,
-          newValue:     conflict.newValue,
-          description:  conflict.description,
-          source,
-        }]);
-      });
-    }
-
-    // Surface gaps via Q&A for fields the document couldn't fill
-    if (gaps.length > 0) {
-      setQaMessages(prev => [...prev, {
-        role:"system",
-        text:`⚠ Not found in this document: ${gaps.slice(0,5).join(", ")}${gaps.length > 5 ? ` +${gaps.length-5} more` : ""}. The AI Setup Assistant will ask about these.`,
-      }]);
-    }
-
-    // Trigger Q&A only for fields still unpopulated
-    const firstUnanswered = questions.findIndex(q => !areFieldsPopulated(q.fields));
-    if (firstUnanswered !== -1 && qaMessages.filter(m => m.role==="ai" && m.qId).length === 0) {
-      askQuestion(firstUnanswered);
-    } else if (firstUnanswered === -1) {
-      setQaMessages(prev => [...prev, {
-        role:"system",
-        text:"✓ All key project fields populated. Review and adjust sheets as needed.",
-      }]);
+    if (key === "raciNote" || key === "changeThreshold" || key === "sustainFocus" || key === "keyMilestones") {
+      const c = sheets["01"]?.data?.charter || {};
+      onSheetUpdate("01", { charter: { ...c, [`_note_${key}`]: value } }, "in-progress");
     }
   };
 
-  // ── Sheet navigation with dirty check ────────────────────────────────────
+  const addTeamRole = (role) => {
+    const existing = sheets["02"]?.data?.teamMembers || [];
+    if (existing.some(m => m.role === role)) return;
+    const code = generateLoginCode(project?.code || "NC", existing.map(m=>m.loginCode));
+    const newMember = { _id:`TM-${String(existing.length+1).padStart(3,"0")}`, loginCode:code, name:"", role,
+      deliveryRole:"", availability:"", location:"", responsibilities:"" };
+    onSheetUpdate("02", { teamMembers: [...existing, newMember] }, "in-progress");
+  };
+  const removeTeamRole = (role) => {
+    const existing = sheets["02"]?.data?.teamMembers || [];
+    onSheetUpdate("02", { teamMembers: existing.filter(m => m.role !== role) }, "in-progress");
+  };
+
+  const addChipItem = (fieldKey, item) => {
+    if (fieldKey === "risks") {
+      const existing = sheets["05"]?.data?.risks || [];
+      if (existing.some(r=>r.name===item)) return;
+      onSheetUpdate("05", { risks:[...existing, { _id:`R-${101+existing.length}`, name:item, cause:"", potentialImpact:"", likelihood:"2", impact:"2", response:"Reduce", mitigation:"", category:"" }] }, "in-progress");
+    } else if (fieldKey === "stakeholders") {
+      const existing = sheets["08"]?.data?.stakeholders || [];
+      if (existing.some(s=>s.name===item)) return;
+      onSheetUpdate("08", { stakeholders:[...existing, { _id:`SH-${String(existing.length+1).padStart(3,"0")}`, name:item, category:"", power:5, interest:5, influence:5, ease:5, engagementStrategy:"" }] }, "in-progress");
+    } else if (fieldKey === "benefits") {
+      const existing = sheets["07"]?.data?.deliverables || [];
+      if (existing.some(d=>d.name===item)) return;
+      onSheetUpdate("07", { deliverables:[...existing, { _id:`D-${String(existing.length+1).padStart(3,"0")}`, name:item, phase:"", deadlineV1:"", notes:"", kpis:[], linkedObjectiveId:"", priority:"" }] }, "in-progress");
+    } else if (fieldKey === "sustainFocus") {
+      const existing = sheets["10"]?.data?.selected || {};
+      onSheetUpdate("10", { selected: { ...existing, [item]: true } }, "in-progress");
+    }
+  };
+  const removeChipItem = (fieldKey, item) => {
+    if (fieldKey === "risks") onSheetUpdate("05", { risks:(sheets["05"]?.data?.risks||[]).filter(r=>r.name!==item) }, "in-progress");
+    else if (fieldKey === "stakeholders") onSheetUpdate("08", { stakeholders:(sheets["08"]?.data?.stakeholders||[]).filter(s=>s.name!==item) }, "in-progress");
+    else if (fieldKey === "benefits") onSheetUpdate("07", { deliverables:(sheets["07"]?.data?.deliverables||[]).filter(d=>d.name!==item) }, "in-progress");
+  };
+  const getChipItems = (fieldKey) => {
+    if (fieldKey === "risks") return (sheets["05"]?.data?.risks||[]).map(r=>r.name);
+    if (fieldKey === "stakeholders") return (sheets["08"]?.data?.stakeholders||[]).map(s=>s.name);
+    if (fieldKey === "benefits") return (sheets["07"]?.data?.deliverables||[]).map(d=>d.name);
+    return [];
+  };
+  const getTeamRoles = () => (sheets["02"]?.data?.teamMembers||[]).filter(m=>!m.isPM).map(m=>m.role);
+
+  useEffect(() => {
+    if (!currentCluster) return;
+    const chipField = currentCluster.fields.find(f => f.aiChips);
+    if (!chipField) return;
+    if (chipField.type === "textarea") return;
+    fetchChipSuggestions(currentCluster.id, chipField.key);
+  }, [currentCluster?.id]);
+
+  const fetchChipSuggestions = async (clusterId, fieldKey) => {
+    setChipsLoading(true);
+    setAiStatus("Generating suggestions based on your project…");
+    const ctx = buildContext();
+    const existingItems = fieldKey === "teamRoles" ? getTeamRoles() : getChipItems(fieldKey);
+    const labels = {
+      risks: "potential project risks",
+      stakeholders: "key stakeholders",
+      benefits: "strategic benefits",
+      sustainFocus: "sustainability focus areas",
+    };
+    try {
+      const prompt = `Project: ${ctx.projectName||"Unnamed"}. Purpose: ${ctx.purpose||"not yet specified"}. Tier: ${tier}.
+Already selected: ${existingItems.join(", ")||"none"}.
+Suggest 5-6 ${labels[fieldKey]||fieldKey} relevant to THIS SPECIFIC project (infer from name/purpose, don't assume one domain — could be construction, research, community, tech, events etc). Do not repeat already selected items.
+Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
+      const raw = await callExtract([{role:"user",content:prompt}], 400);
+      const parsed = safeParseJSON(raw);
+      setAiChipSuggestions(prev => ({ ...prev, [clusterId]: parsed.suggestions||[] }));
+    } catch(e) {
+      setAiChipSuggestions(prev => ({ ...prev, [clusterId]: [] }));
+    }
+    setChipsLoading(false);
+    setAiStatus("");
+  };
+
+  const [purposeSuggestion, setPurposeSuggestion] = useState("");
+  const [purposeLoading, setPurposeLoading] = useState(false);
+  useEffect(() => {
+    if (currentCluster?.id !== "c2") return;
+    if (getCharterField("purpose")) return;
+    setPurposeLoading(true);
+    const ctx = buildContext();
+    callExtract([{role:"user",content:
+      `Project name: "${ctx.projectName||"Unnamed project"}". Suggest a concise, specific one-sentence purpose statement (what it will achieve, with a measurable outcome if possible). Return ONLY the sentence, no quotes, no preamble.`
+    }], 150).then(text => setPurposeSuggestion(text.trim())).catch(()=>setPurposeSuggestion("")).finally(()=>setPurposeLoading(false));
+  }, [currentCluster?.id]);
+
   const navigateToSheet = (id) => {
     if (id === activeSheet) return;
-    if (dirtySheet) {
-      setSavingPrompt(id);
-    } else {
-      setActiveSheet(id);
-      onSheetNav(id);
-    }
+    if (dirtySheet) setSavingPrompt(id);
+    else { setActiveSheet(id); onSheetNav(id); }
   };
-
   const confirmSave = () => {
-    if (savingPrompt) {
-      onSheetApprove(activeSheet);
-      setActiveSheet(savingPrompt);
-      onSheetNav(savingPrompt);
-    }
-    setSavingPrompt(null);
-    setDirtySheet(false);
+    if (savingPrompt) { onSheetApprove(activeSheet); setActiveSheet(savingPrompt); onSheetNav(savingPrompt); }
+    setSavingPrompt(null); setDirtySheet(false);
   };
-
   const discardAndNav = () => {
-    if (savingPrompt) {
-      setActiveSheet(savingPrompt);
-      onSheetNav(savingPrompt);
-    }
-    setSavingPrompt(null);
-    setDirtySheet(false);
+    if (savingPrompt) { setActiveSheet(savingPrompt); onSheetNav(savingPrompt); }
+    setSavingPrompt(null); setDirtySheet(false);
   };
 
-  // ── Role popup ─────────────────────────────────────────────────────────────
   const ROLE_GROUPS = [
-    { label:"Governance & Leadership", roles:[
-      "Project Sponsor","Senior Responsible Owner","Executive Steering Committee Member",
-      "Programme Manager","Portfolio Manager","Project Board Member","Client Representative",
-      "Independent Assessor","Project Auditor",
-    ]},
-    { label:"Project Management", roles:[
-      "Assistant Project Manager","Project Coordinator","Project Scheduler",
-      "Project Controller","Planning Engineer","Project Administrator",
-      "Document Controller","Configuration Manager","Project Support Officer",
-    ]},
-    { label:"Risk, Change & Quality", roles:[
-      "Risk Owner","Risk Manager","Change Manager","Change Control Officer",
-      "Quality Assurance Lead","Quality Manager","Compliance Officer",
-      "Health & Safety Advisor","Environmental Advisor",
-    ]},
-    { label:"Technical & Delivery", roles:[
-      "Technical Lead","Systems Engineer","Design Manager","Architect",
-      "Software Developer","Data Analyst","IT Lead","Infrastructure Lead",
-      "Construction Manager","Site Manager","Quantity Surveyor",
-      "Structural Engineer","Civil Engineer","Mechanical Engineer",
-      "Electrical Engineer","BIM Manager","Testing Lead",
-    ]},
-    { label:"Business & Finance", roles:[
-      "Finance Lead","Budget Manager","Financial Analyst","Procurement Lead",
-      "Commercial Manager","Contracts Manager","Business Analyst",
-      "Benefits Realisation Manager","Business Change Manager",
-    ]},
-    { label:"People & Communications", roles:[
-      "Communications Lead","Stakeholder Liaison","Public Relations Manager",
-      "Community Engagement Officer","Marketing Lead","Training Lead",
-      "Organisational Development Lead","HR Business Partner",
-    ]},
-    { label:"Research & Knowledge", roles:[
-      "Research Coordinator","Research Lead","Knowledge Manager",
-      "Subject Matter Expert","Academic Advisor","Data Manager",
-      "Monitoring & Evaluation Lead","Impact Assessor",
-    ]},
-    { label:"Legal & External", roles:[
-      "Legal Advisor","Legal Counsel","Contract Advisor","Regulatory Advisor",
-      "Planning Consultant","External Consultant","Third Party Representative",
-      "Supplier Manager","Partner Liaison",
-    ]},
+    { label:"Governance", roles:["Project Sponsor","Senior Responsible Owner","Project Board Member","Independent Assessor"] },
+    { label:"Management", roles:["Assistant Project Manager","Project Coordinator","Project Scheduler","Document Controller"] },
+    { label:"Risk & Quality", roles:["Risk Owner","Change Manager","Quality Assurance Lead","Health & Safety Advisor"] },
+    { label:"Technical", roles:["Technical Lead","Design Manager","Site Manager","Software Developer","Construction Manager"] },
+    { label:"Business", roles:["Finance Lead","Procurement Lead","Commercial Manager","Business Analyst"] },
+    { label:"People", roles:["Communications Lead","Stakeholder Liaison","Marketing Lead","Training Lead"] },
+    { label:"Research", roles:["Research Coordinator","Subject Matter Expert","Data Manager","Impact Assessor"] },
   ];
-
   const [customRoleInput, setCustomRoleInput] = useState("");
-  const [customRoles,     setCustomRoles]     = useState([]);
-  const [aiRoleSuggestions, setAiRoleSuggestions] = useState([]);
-  const [rolesAiLoading,    setRolesAiLoading]    = useState(false);
 
-  const allAvailableRoles = [
-    ...ROLE_GROUPS.flatMap(g => g.roles),
-    ...customRoles,
-  ];
+  const inp = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6, color:C.sage,
+    fontSize:13, padding:"10px 13px", outline:"none", width:"100%", boxSizing:"border-box", fontFamily:"inherit" };
 
-  const toggleRole = (role) => {
-    setSelectedRoles(prev =>
-      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
-    );
-  };
+  if (!tier) return <TierSelect onSelect={(t)=>onSheetUpdate("__tier__",{},"empty",t)} onBack={onLogout}/>;
 
-  const addCustomRole = () => {
-    const r = customRoleInput.trim();
-    if (!r || allAvailableRoles.includes(r) || r === "Project Manager") return;
-    setCustomRoles(prev => [...prev, r]);
-    setSelectedRoles(prev => [...prev, r]);
-    setCustomRoleInput("");
-  };
-
-  // Fire AI suggestions immediately when popup opens
-  useEffect(() => {
-    if (!showRolePopup) return;
-    const ctx = buildSheetContext();
-    const hasContext = ctx.projectName || ctx.purpose || (sheets["01"]?.data?.charter?.projectName);
-    if (!hasContext) return;
-    setRolesAiLoading(true);
-    setAiStatus("Analysing project context for role suggestions…");
-    callExtract([{ role:"user", content:
-      `You are a project management expert. Based on this project context, suggest the most relevant team roles.
-Project: ${ctx.projectName || "Unknown"}
-Purpose: ${ctx.purpose || "Not specified"}
-Tier: ${tier}
-
-Return ONLY valid JSON, no markdown, no preamble:
-{"suggestions":["Role 1","Role 2","Role 3","Role 4","Role 5"],"rationale":"one sentence explaining why these roles fit this project"}
-
-Choose from roles typical for this type of project. Max 6 suggestions. Do not include Project Manager.`
-    }], 400)
-      .then(raw => {
-        try {
-          const parsed = safeParseJSON(raw);
-          setAiRoleSuggestions(parsed.suggestions || []);
-        } catch(e) { setAiRoleSuggestions([]); }
-      })
-      .catch(() => setAiRoleSuggestions([]))
-      .finally(() => { setRolesAiLoading(false); setAiStatus(""); });
-  }, [showRolePopup]);
-
-  const confirmRoles = async () => {
-    if (!selectedRoles.length) return;
-    setShowRolePopup(false);
-    setBlurLifted(true);
-    setAiStatus("Generating team structure from selected roles…");
-
-    // Build team members from selected roles — PM always first
-    const ordered = ["Project Manager", ...selectedRoles.filter(r => r !== "Project Manager")];
-    const { generateLoginCode } = await import("../store/appStore.js");
-    const existingCodes = (l2?.loginCodes || []).map(m => m.loginCode);
-
-    // Pre-fill names from any already-extracted charter context
-    const charter = sheets["01"]?.data?.charter || {};
-    const knownNames = {
-      "Project Manager": charter.projectManager || "",
-      "Project Sponsor":  charter.projectSponsor  || "",
-    };
-
-    const newMembers = ordered.map((role, i) => {
-      const code = generateLoginCode(project?.code || "NC", [...existingCodes]);
-      existingCodes.push(code);
-      return {
-        _id:              `TM-${String(i+1).padStart(3,"0")}`,
-        loginCode:        code,
-        name:             knownNames[role] || "",
-        role,
-        deliveryRole:     "",
-        availability:     "",
-        location:         "",
-        responsibilities: "",
-        isPM:             role === "Project Manager",
-      };
-    });
-
-    // Write to sheet 02
-    const existingTeam = sheets["02"]?.data?.teamMembers || [];
-    if (existingTeam.length === 0) {
-      onSheetUpdate("02", { teamMembers: newMembers }, "ai-draft");
-    }
-
-    // Write all generated login codes into l2.loginCodes so Sheet02Team renders them
-    // The PM entry from PMSetup screen is already in loginCodes — only add non-PM roles
-    const nonPMMembers = newMembers.filter(m => !m.isPM);
-    nonPMMembers.forEach(m => {
-      onSheetUpdate("__loginCode__", {}, "empty", {
-        loginCode: m.loginCode,
-        name:      m.name,
-        role:      m.role,
-        isPM:      false,
-      });
-    });
-
-    // Write role list to charter as a hint
-    const existingCharter = sheets["01"]?.data?.charter || {};
-    if (!existingCharter.teamRoles) {
-      onSheetUpdate("01", { charter: { ...existingCharter, teamRoles: ordered.join(", ") } }, "ai-draft");
-    }
-
-    // If document context exists, ask AI to suggest names for blank roles
-    const hasDocContext = (sheets["03"]?.data?.activities||[]).length > 0 ||
-                          (sheets["05"]?.data?.risks||[]).length > 0 ||
-                          charter.purpose;
-    const blankRoles = ordered.filter(r => !knownNames[r]);
-
-    if (hasDocContext && blankRoles.length > 0) {
-      setAiStatus("Checking document context for team name suggestions…");
-      try {
-        const prompt = `A project manager is setting up a project team. Based on the project context below, suggest realistic placeholder names or leave blank if truly unknown.
-Project: ${charter.projectName || "Unknown"}
-Purpose: ${charter.purpose || "Not specified"}
-Known team: PM is ${charter.projectManager || "unknown"}, Sponsor is ${charter.projectSponsor || "unknown"}
-Roles needing names: ${blankRoles.join(", ")}
-
-Return ONLY valid JSON, no markdown:
-{"names":{"Role Name":"Suggested Name or empty string"}}
-Only suggest a name if you have reasonable context to infer it. Otherwise return empty string.`;
-
-        const raw = await callExtract([{ role:"user", content:prompt }], 400);
-        try {
-          const parsed = safeParseJSON(raw);
-          if (parsed.names) {
-            const updatedTeam = newMembers.map(m => ({
-              ...m,
-              name: m.name || parsed.names[m.role] || "",
-            }));
-            onSheetUpdate("02", { teamMembers: updatedTeam }, "ai-draft");
-          }
-        } catch(e) { /* ignore parse failure — blank names are fine */ }
-      } catch(e) { /* ignore AI failure */ }
-    }
-
-    setAiStatus("");
-    // Navigate to Team sheet so PM sees the populated rows immediately
-    setActiveSheet("02");
-    onSheetNav("02");
-    // Kick off Q&A now that roles are known
-    if (qaMessages.length === 0) askQuestion(0);
-  };
-  if (!tier) return <TierSelect
-    onSelect={(t) => onSheetUpdate("__tier__", {}, "empty", t)}
-    onBack={onLogout}/>;
-
-  // ── After tier: PM name + project details screen ──────────────────────────
-  const pmAlreadySet = (l2?.loginCodes||[]).some(m => m.isPM || m.role === "Project Manager");
   if (!pmAlreadySet && !isExisting) {
     return (
-      <PMSetup
-        tier={tier}
-        onBack={() => onSheetUpdate("__tier__", {}, "empty", null)}
+      <PMSetup tier={tier} onBack={()=>onSheetUpdate("__tier__",{},"empty",null)}
         onConfirm={({ projectName, projectCode, pmName, loginCode }) => {
-          // Write project meta
           onSheetUpdate("__projectMeta__", {}, "empty", { projectName, projectCode });
-          // Write PM into Sheet 02 team members
-          onSheetUpdate("02", {
-            teamMembers: [{
-              _id: "TM-001",
-              loginCode,
-              name: pmName,
-              role: "Project Manager",
-              deliveryRole: "",
-              availability: "",
-              location: "",
-              responsibilities: "",
-              isPM: true,
-            }]
-          }, "in-progress");
-          // Write PM name + project details into Sheet 01 charter
+          onSheetUpdate("02", { teamMembers:[{ _id:"TM-001", loginCode, name:pmName, role:"Project Manager",
+            deliveryRole:"", availability:"", location:"", responsibilities:"", isPM:true }] }, "in-progress");
           const charter = sheets["01"]?.data?.charter || {};
-          onSheetUpdate("01", {
-            charter: {
-              ...charter,
-              projectName,
-              projectCode,
-              projectManager: pmName,
-            }
-          }, sheets["01"]?.status || "in-progress");
-          // Write login code into l2.loginCodes
-          onSheetUpdate("__loginCode__", {}, "empty", { loginCode, name: pmName, role:"Project Manager", isPM:true });
+          onSheetUpdate("01", { charter:{ ...charter, projectName, projectCode, projectManager:pmName } }, "in-progress");
+          onSheetUpdate("__loginCode__", {}, "empty", { loginCode, name:pmName, role:"Project Manager", isPM:true });
         }}/>
     );
   }
 
-  const activeSheets  = tierCfg.sheets;
-  const SheetComp     = SHEET_COMPONENTS[activeSheet];
-  const approvedCount = Object.values(sheets).filter(s => s.locked).length;
-  const l3Unlocked    = approvedCount > 0 && (l2?.loginCodes||[]).length > 0;
+  const progress = totalFieldsKnown();
+  const progressPct = progress.total > 0 ? Math.round((progress.known/progress.total)*100) : 0;
 
-  const inp = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:5,
-    color:C.sage, fontSize:11, padding:"7px 9px", outline:"none", width:"100%",
-    boxSizing:"border-box", fontFamily:"inherit" };
+  if (phase === "intake") {
+    return (
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, padding:32 }}>
+        <div style={{ maxWidth:520, width:"100%" }}>
+          <div style={{ textAlign:"center", marginBottom:28 }}>
+            <div style={{ fontSize:28, marginBottom:10 }}>📄</div>
+            <div style={{ fontSize:18, fontWeight:700, color:C.sage, marginBottom:6 }}>Have a project document?</div>
+            <div style={{ fontSize:12, color:C.muted, lineHeight:1.6 }}>
+              Upload a brief, schedule, or proposal and AI will read it and pre-fill your project. Or skip and we'll build it together.
+            </div>
+          </div>
+
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"22px 24px" }}>
+            <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+              {["file","text"].map(m => (
+                <button key={m} onClick={()=>setUploadMode(m)}
+                  style={{ flex:1, padding:"8px", fontSize:11, fontWeight:700,
+                    border:`1px solid ${uploadMode===m?C.accent:C.border}`, borderRadius:6,
+                    background:uploadMode===m?C.accent+"22":"none", color:uploadMode===m?C.accentL:C.muted, cursor:"pointer" }}>
+                  {m==="file" ? "📎 Upload Document" : "✏️ Paste Text"}
+                </button>
+              ))}
+            </div>
+
+            {uploadMode === "file" ? (
+              <label style={{ display:"block", padding:"28px 14px", border:`1.5px dashed ${C.border}`,
+                borderRadius:8, cursor:"pointer", textAlign:"center", fontSize:12, color:C.muted, background:C.surface2 }}>
+                <input type="file" multiple accept=".docx,.xlsx,.xls,.pdf,.txt,.csv" onChange={handleFileUpload} style={{ display:"none" }}/>
+                {extracting ? <span style={{ color:C.accentL }}>⚡ {aiStatus || "Processing…"}</span>
+                  : <>Drop files or click<br/><span style={{ fontSize:10 }}>.docx · .xlsx · .pdf · .txt</span></>}
+              </label>
+            ) : (
+              <div>
+                <textarea value={pasteText} onChange={e=>setPasteText(e.target.value)}
+                  placeholder="Paste your project brief, notes, or summary…"
+                  style={{ ...inp, minHeight:120, resize:"none", lineHeight:1.5 }}/>
+                <button onClick={handleTextExtract} disabled={!pasteText.trim()||extracting}
+                  style={{ width:"100%", marginTop:8, padding:"9px", background:pasteText.trim()&&!extracting?C.accent:"#1F4D34",
+                    border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700,
+                    cursor:pasteText.trim()&&!extracting?"pointer":"not-allowed" }}>
+                  {extracting ? `⚡ ${aiStatus||"Processing…"}` : "⚡ Extract Information"}
+                </button>
+              </div>
+            )}
+
+            {fileList.length > 0 && (
+              <div style={{ marginTop:12 }}>
+                {fileList.map((f,i) => (
+                  <div key={i} style={{ fontSize:11, color:C.accentL, padding:"3px 0", display:"flex", gap:6 }}>
+                    <span style={{ color:C.activity }}>✓</span>{f}
+                  </div>
+                ))}
+                {docAnalysis && (
+                  <div style={{ marginTop:8, fontSize:10, color:C.dim, fontStyle:"italic", lineHeight:1.5,
+                    background:C.surface2, borderRadius:6, padding:"8px 10px" }}>
+                    {docAnalysis}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"flex", gap:10, marginTop:18 }}>
+            <button onClick={()=>onSheetUpdate("__tier__",{},"empty",null)}
+              style={{ padding:"10px 16px", background:"none", border:`1px solid ${C.border}`,
+                borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>← Back</button>
+            <button onClick={enterWizard}
+              style={{ flex:1, padding:"12px", background:C.accent, border:"none", borderRadius:7,
+                color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
+                boxShadow:`0 4px 16px ${C.accent}44` }}>
+              {fileList.length > 0 ? "Continue →" : "Skip — Build with AI Assistant →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "wizard") {
+    if (!currentCluster) {
+      setTimeout(() => advanceWizard(), 0);
+      return null;
+    }
+
+    return (
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
+
+        <div style={{ background:C.surface2, borderBottom:`1px solid ${C.border}`, padding:"10px 24px", flexShrink:0 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted, marginBottom:6 }}>
+            <span>Setting up <strong style={{ color:C.accentL }}>{SHEET_LABELS[currentSheetId]}</strong></span>
+            <span style={{ color:C.dim }}>{progress.known} of {progress.total} fields gathered ({progressPct}%)</span>
+          </div>
+          <div style={{ display:"flex", gap:4 }}>
+            {wizardSheetOrder.map((id,i) => (
+              <div key={id} title={SHEET_LABELS[id]}
+                style={{ flex:1, height:5, borderRadius:3,
+                  background: i<sheetIdx?C.activity:i===sheetIdx?C.accentL:C.border,
+                  opacity: i===sheetIdx?1:0.6 }}/>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
+          <div style={{ position:"absolute", inset:0, filter:"blur(8px)", opacity:0.3, pointerEvents:"none",
+            display:"flex", padding:20, gap:16 }}>
+            {["Charter","Team","Schedule"].map(label => (
+              <div key={label} style={{ flex:1, background:C.surface, borderRadius:8, padding:16 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.sage, marginBottom:10 }}>{label}</div>
+                {[1,2,3].map(i => <div key={i} style={{ height:10, background:C.surface2, borderRadius:4, marginBottom:8 }}/>)}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ position:"relative", flex:1, height:"100%", display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
+            <div style={{ maxWidth:540, width:"100%", background:C.surface, border:`1px solid ${C.border}`,
+              borderRadius:12, padding:"28px 32px", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
+
+              <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:18 }}>{currentCluster.title}</div>
+
+              {currentCluster.fields.map(field => {
+                if (field.optional && isFieldKnown(field.key)) return null;
+
+                if (field.type === "roles") {
+                  const selected = getTeamRoles();
+                  return (
+                    <div key={field.key} style={{ marginBottom:18 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".4px", marginBottom:10 }}>{field.label}</div>
+                      <div style={{ maxHeight:280, overflowY:"auto", marginBottom:10 }}>
+                        {ROLE_GROUPS.map(g => (
+                          <div key={g.label} style={{ marginBottom:10 }}>
+                            <div style={{ fontSize:9, color:C.muted, textTransform:"uppercase", marginBottom:5 }}>{g.label}</div>
+                            <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                              {g.roles.map(role => {
+                                const sel = selected.includes(role);
+                                return (
+                                  <button key={role} onClick={()=>sel?removeTeamRole(role):addTeamRole(role)}
+                                    style={{ padding:"5px 11px", borderRadius:16, fontSize:10, fontWeight:600,
+                                      border:`1px solid ${sel?C.accentL:C.border}`, background:sel?C.accentL+"22":"none",
+                                      color:sel?C.accentL:C.muted, cursor:"pointer" }}>
+                                    {sel?"✓ ":"+ "}{role}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display:"flex", gap:6 }}>
+                        <input value={customRoleInput} onChange={e=>setCustomRoleInput(e.target.value)}
+                          onKeyDown={e=>{if(e.key==="Enter"&&customRoleInput.trim()){addTeamRole(customRoleInput.trim());setCustomRoleInput("");}}}
+                          placeholder="Add a role not listed…" style={{ ...inp, fontSize:11 }}/>
+                        <button onClick={()=>{if(customRoleInput.trim()){addTeamRole(customRoleInput.trim());setCustomRoleInput("");}}}
+                          style={{ padding:"8px 14px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Add</button>
+                      </div>
+                      {selected.length > 0 && (
+                        <div style={{ fontSize:10, color:C.muted, marginTop:8 }}>{selected.length} role{selected.length!==1?"s":""} selected</div>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (field.type === "chips-multi") {
+                  const items = getChipItems(field.key);
+                  const suggestions = (aiChipSuggestions[currentCluster.id]||[]).filter(s=>!items.includes(s));
+                  return (
+                    <div key={field.key} style={{ marginBottom:18 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".4px", marginBottom:10 }}>{field.label}</div>
+
+                      {items.length > 0 && (
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+                          {items.map(item => (
+                            <span key={item} style={{ padding:"5px 10px", borderRadius:16, fontSize:11,
+                              background:C.accentL+"22", color:C.accentL, border:`1px solid ${C.accentL}44`,
+                              display:"flex", alignItems:"center", gap:6 }}>
+                              {item}
+                              <span onClick={()=>removeChipItem(field.key,item)} style={{ cursor:"pointer", opacity:0.7 }}>✕</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div style={{ fontSize:10, fontWeight:700, color:C.accentL, textTransform:"uppercase", letterSpacing:".4px", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
+                        <span style={{ width:5, height:5, borderRadius:"50%", background:C.accentL, animation: chipsLoading?"pulse 1.2s ease-in-out infinite":"none" }}/>
+                        {chipsLoading ? "Generating suggestions…" : "AI Suggestions"}
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+                        {suggestions.map(s => (
+                          <button key={s} onClick={()=>addChipItem(field.key,s)}
+                            style={{ padding:"5px 11px", borderRadius:16, fontSize:11, fontWeight:600,
+                              border:`1px solid ${C.accentL}66`, background:C.accentL+"11", color:C.dim, cursor:"pointer" }}>
+                            + {s}
+                          </button>
+                        ))}
+                        {!chipsLoading && suggestions.length===0 && items.length===0 && (
+                          <span style={{ fontSize:10, color:C.muted, fontStyle:"italic" }}>No suggestions yet — add your own below</span>
+                        )}
+                      </div>
+                      <div style={{ display:"flex", gap:6 }}>
+                        <input id={`custom-${field.key}`} placeholder="Type your own and press Enter…"
+                          onKeyDown={e=>{
+                            if(e.key==="Enter" && e.target.value.trim()){
+                              addChipItem(field.key, e.target.value.trim());
+                              e.target.value="";
+                              fetchChipSuggestions(currentCluster.id, field.key);
+                            }
+                          }}
+                          style={{ ...inp, fontSize:11 }}/>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (field.type === "textarea" && field.key === "purpose") {
+                  const current = getCharterField("purpose");
+                  return (
+                    <div key={field.key} style={{ marginBottom:18 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".4px", marginBottom:8 }}>{field.label}</div>
+                      {!current && purposeSuggestion && (
+                        <div style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6,
+                          padding:"8px 10px", marginBottom:8, fontSize:11, color:C.dim, lineHeight:1.5 }}>
+                          <span style={{ color:C.accentL, fontWeight:700 }}>Suggestion: </span>{purposeSuggestion}
+                        </div>
+                      )}
+                      <textarea defaultValue={current || purposeSuggestion} key={current||purposeSuggestion}
+                        onBlur={e=>saveFieldAnswer("purpose", e.target.value)}
+                        placeholder={purposeLoading ? "Generating suggestion…" : "What will this project achieve?"}
+                        style={{ ...inp, minHeight:70, resize:"none", lineHeight:1.5 }}/>
+                    </div>
+                  );
+                }
+
+                if (field.type === "textarea") {
+                  return (
+                    <div key={field.key} style={{ marginBottom:18 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".4px", marginBottom:8 }}>
+                        {field.label} {field.optional && <span style={{ fontWeight:400, color:C.muted, textTransform:"none" }}>(optional)</span>}
+                      </div>
+                      <textarea defaultValue={fieldAnswers[field.key]||""} onBlur={e=>saveFieldAnswer(field.key, e.target.value)}
+                        style={{ ...inp, minHeight:60, resize:"none" }}/>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={field.key} style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:"uppercase", letterSpacing:".4px", marginBottom:8 }}>
+                      {field.label} {field.required && <span style={{ color:C.risk }}>*</span>}
+                    </div>
+                    <input type={field.type==="date"?"date":"text"}
+                      defaultValue={
+                        field.key==="projectManager"?getCharterField("projectManager"):
+                        field.key==="projectName"?getCharterField("projectName"):
+                        field.key==="organisation"?getCharterField("organisation"):
+                        field.key==="projectSponsor"?getCharterField("projectSponsor"):
+                        field.key==="startDate"?getCharterField("startDate"):
+                        field.key==="endDate"?getCharterField("endDate"):
+                        field.key==="budget"?getCharterField("budget"):
+                        fieldAnswers[field.key]||""
+                      }
+                      onBlur={e=>saveFieldAnswer(field.key, e.target.value)}
+                      placeholder={field.placeholder||""}
+                      style={inp}/>
+                  </div>
+                );
+              })}
+
+              <div style={{ display:"flex", gap:10, marginTop:8 }}>
+                <button onClick={goBackWizard}
+                  style={{ padding:"10px 16px", background:"none", border:`1px solid ${C.border}`,
+                    borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>← Back</button>
+                <button onClick={advanceWizard}
+                  style={{ flex:1, padding:"11px", background:C.accent, border:"none", borderRadius:7,
+                    color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                  Continue →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
+      </div>
+    );
+  }
+
+  const activeSheets = tierCfg.sheets;
+  const SheetComp = SHEET_COMPONENTS[activeSheet];
+  const approvedCount = Object.values(sheets).filter(s=>s.locked).length;
+  const l3Unlocked = approvedCount > 0 && (l2?.loginCodes||[]).length > 0;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden", height:"100%" }}>
-
-      {/* ── Progress bar ── */}
       <div style={{ background:C.surface2, borderBottom:`1px solid ${C.border}`, padding:"8px 20px", flexShrink:0 }}>
         <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted, marginBottom:5 }}>
           <span>Project setup — <strong style={{ color:C.accentL }}>{tierCfg.label}</strong> tier</span>
@@ -1545,609 +1037,79 @@ Only suggest a name if you have reasonable context to infer it. Otherwise return
         </div>
         <div style={{ display:"flex", gap:3 }}>
           {activeSheets.map(id => {
-            const st = sheets[id]?.status || "empty";
+            const st = sheets[id]?.status||"empty";
             const col = st==="approved"?"#3ae0a2":st==="ai-draft"?"#3a9ce0":st==="in-progress"?"#e0a23a":C.border;
-            return (
-              <div key={id} onClick={() => navigateToSheet(id)}
-                title={SHEET_LABELS[id]}
-                style={{ flex:1, height:5, borderRadius:3, background:col, opacity: activeSheet===id?1:0.5,
-                  outline: activeSheet===id?`2px solid ${C.accentL}`:"none", outlineOffset:1,
-                  cursor:"pointer" }}/>
-            );
+            return <div key={id} onClick={()=>navigateToSheet(id)} title={SHEET_LABELS[id]}
+              style={{ flex:1, height:5, borderRadius:3, background:col, opacity:activeSheet===id?1:0.5,
+                outline:activeSheet===id?`2px solid ${C.accentL}`:"none", outlineOffset:1, cursor:"pointer" }}/>;
           })}
         </div>
       </div>
 
-      {/* ── Three-column body ── */}
-      <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
-
-        {/* ════════ LEFT SIDEBAR ════════ */}
-        <div style={{ width:380, minWidth:360, borderRight:`1px solid ${C.border}`,
-          display:"flex", flexDirection:"column", overflow:"hidden", flexShrink:0, background:C.surface }}>
-
-          {/* Tier badge */}
-          <div style={{ padding:"10px 14px", borderBottom:`1px solid ${C.border}`, flexShrink:0,
-            display:"flex", alignItems:"center", gap:8 }}>
-            <span style={{ fontSize:14 }}>{tierCfg.icon}</span>
-            <div>
-              <div style={{ fontSize:11, fontWeight:700, color:C.sage }}>{tierCfg.label} Project</div>
-              <div style={{ fontSize:9, color:C.muted }}>Tier locked</div>
-            </div>
-          </div>
-
-          {/* ── Document Intelligence (top half of sidebar) ── */}
-          <div style={{ flexShrink:0, borderBottom:`1px solid ${C.border}`, padding:"10px 14px" }}>
-            <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
-              letterSpacing:".6px", marginBottom:8 }}>Document Intelligence</div>
-
-            {/* Upload / Paste toggle */}
-            <div style={{ display:"flex", gap:4, marginBottom:8 }}>
-              {["file","text"].map(m => (
-                <button key={m} onClick={() => setUploadMode(m)}
-                  style={{ flex:1, padding:"4px", fontSize:10, fontWeight:700, border:`1px solid ${uploadMode===m?C.accent:C.border}`,
-                    borderRadius:4, background:uploadMode===m?C.accent+"22":"none", color:uploadMode===m?C.accentL:C.muted, cursor:"pointer" }}>
-                  {m==="file" ? "📎 Upload" : "✏️ Paste"}
-                </button>
-              ))}
-            </div>
-
-            {uploadMode === "file" ? (
-              <div>
-                <label style={{ display:"block", padding:"10px", border:`1px dashed ${C.border}`,
-                  borderRadius:6, cursor:"pointer", textAlign:"center", fontSize:11, color:C.muted,
-                  background:C.surface2 }}>
-                  <input type="file" multiple accept=".docx,.xlsx,.xls,.pdf,.txt,.csv"
-                    onChange={handleFileUpload} style={{ display:"none" }}/>
-                  {extracting ? <span style={{ color:C.accentL }}>⚡ Extracting…</span>
-                    : "Drop files or click\n.docx .xlsx .pdf .txt"}
-                </label>
-                {fileList.length > 0 && (
-                  <div style={{ marginTop:6 }}>
-                    {fileList.map((f,i) => (
-                      <div key={i} style={{ fontSize:10, color:C.accentL, padding:"2px 0",
-                        display:"flex", alignItems:"center", gap:4 }}>
-                        <span style={{ color:C.activity }}>✓</span>{f}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                <textarea value={pasteText} onChange={e => setPasteText(e.target.value)}
-                  placeholder="Paste project notes, brief, or any text…"
-                  style={{ ...inp, minHeight:80, resize:"none", fontSize:11, lineHeight:1.5 }}/>
-                <button onClick={handleTextExtract} disabled={!pasteText.trim()||extracting}
-                  style={{ width:"100%", marginTop:6, padding:"6px", background:pasteText.trim()&&!extracting?C.accent:"#1F4D34",
-                    border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700,
-                    cursor:pasteText.trim()&&!extracting?"pointer":"not-allowed" }}>
-                  ⚡ Extract
-                </button>
-              </div>
-            )}
-
-            {extractMsg && (
-              <div style={{ marginTop:6, fontSize:10, color:extractMsg.startsWith("⚠")?C.risk:C.accentL,
-                lineHeight:1.4 }}>{extractMsg}</div>
-            )}
-          </div>
-
-          {/* ── AI Q&A Engine (bottom half of sidebar) ── */}
-          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-            <div style={{ padding:"8px 14px 4px", fontSize:10, fontWeight:700, color:C.muted,
-              textTransform:"uppercase", letterSpacing:".6px", flexShrink:0 }}>
-              AI Setup Assistant
-            </div>
-
-            {/* Message thread */}
-            <div style={{ flex:1, overflowY:"auto", padding:"4px 14px" }}>
-              {qaMessages.map((msg, i) => {
-                if (msg.role === "system") return (
-                  <div key={i} style={{ fontSize:10, color:C.accentL, padding:"4px 0",
-                    borderBottom:`1px solid ${C.border}22`, marginBottom:4 }}>
-                    {msg.text}
-                  </div>
-                );
-                if (msg.role === "conflict") return (
-                  <div key={i} style={{ background:"rgba(224,162,58,0.08)", border:`1px solid ${C.milestone}44`,
-                    borderLeft:`3px solid ${C.milestone}`, borderRadius:7, padding:"10px 12px", marginBottom:10 }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:C.milestone, marginBottom:5,
-                      textTransform:"uppercase", letterSpacing:".4px" }}>
-                      ⚠ Conflict detected — {msg.field}
-                    </div>
-                    <div style={{ fontSize:11, color:C.dim, marginBottom:8, lineHeight:1.5 }}>
-                      {msg.description}
-                    </div>
-                    <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-                      <div style={{ flex:1, background:C.surface, borderRadius:5, padding:"6px 9px", fontSize:10 }}>
-                        <div style={{ color:C.muted, marginBottom:2 }}>Current value</div>
-                        <div style={{ color:C.sage }}>{msg.existingValue || "—"}</div>
-                      </div>
-                      <div style={{ flex:1, background:C.surface, borderRadius:5, padding:"6px 9px", fontSize:10 }}>
-                        <div style={{ color:C.muted, marginBottom:2 }}>From {msg.source}</div>
-                        <div style={{ color:C.milestone }}>{msg.newValue || "—"}</div>
-                      </div>
-                    </div>
-                    <div style={{ display:"flex", gap:6 }}>
-                      <button onClick={() => {
-                        // Keep existing — dismiss conflict
-                        setQaMessages(prev => prev.map((m,j) => j===i ? {...m, resolved:"kept"} : m));
-                      }} style={{ flex:1, padding:"5px", background:"none",
-                        border:`1px solid ${C.border}`, borderRadius:4,
-                        color:C.muted, fontSize:10, cursor:"pointer" }}>
-                        Keep current
-                      </button>
-                      <button onClick={() => {
-                        // Use new value — apply to charter
-                        const charter = sheets["01"]?.data?.charter || {};
-                        onSheetUpdate("01", { charter: { ...charter, [msg.field]: msg.newValue } }, "ai-draft");
-                        setQaMessages(prev => prev.map((m,j) => j===i ? {...m, resolved:"updated"} : m));
-                      }} style={{ flex:1, padding:"5px", background:C.milestone+"22",
-                        border:`1px solid ${C.milestone}44`, borderRadius:4,
-                        color:C.milestone, fontSize:10, fontWeight:700, cursor:"pointer" }}>
-                        Use new value
-                      </button>
-                    </div>
-                    {msg.resolved && (
-                      <div style={{ fontSize:10, color:C.muted, marginTop:5, fontStyle:"italic" }}>
-                        {msg.resolved === "kept" ? "✓ Kept existing value" : "✓ Updated to new value"}
-                      </div>
-                    )}
-                  </div>
-                );
-                if (msg.role === "user") return (
-                  <div key={i} style={{ background:C.surface2, borderRadius:6, padding:"7px 10px",
-                    marginBottom:8, fontSize:11, color:C.dim }}>
-                    {msg.text}
-                  </div>
-                );
-                if (msg.text) return (
-                  <div key={i} style={{ fontSize:11, color:C.dim, marginBottom:8, lineHeight:1.5 }}>
-                    {msg.text}
-                  </div>
-                );
-                // Structured Q&A message
-                return (
-                  <div key={i} style={{ background:C.surface2, border:`1px solid ${C.border}`,
-                    borderRadius:7, padding:"10px 12px", marginBottom:10 }}>
-                    <div style={{ fontSize:11, color:C.sage, fontWeight:600, marginBottom:6, lineHeight:1.4 }}>
-                      {msg.question}
-                    </div>
-                    {msg.accepted ? (
-                      <div style={{ fontSize:10, color:C.activity, display:"flex", gap:4, alignItems:"center" }}>
-                        <span>✓</span>
-                        <span style={{ color:C.dim }}>{msg.userEdit || msg.recommendation}</span>
-                      </div>
-                    ) : (
-                      <>
-                        {msg.recommendation && (
-                          <div style={{ background:C.surface, borderRadius:5, padding:"6px 8px", marginBottom:6,
-                            fontSize:10, color:C.dim, lineHeight:1.5, border:`1px solid ${C.border}` }}>
-                            <span style={{ color:C.accentL, fontWeight:700, marginRight:4 }}>Suggestion:</span>
-                            {msg.recommendation}
-                          </div>
-                        )}
-                        {msg.rationale && (
-                          <div style={{ fontSize:9, color:C.muted, marginBottom:6, fontStyle:"italic" }}>
-                            {msg.rationale}
-                          </div>
-                        )}
-                        {msg.error && (
-                          <div style={{ fontSize:10, color:C.risk, marginBottom:6 }}>⚠ {msg.error}</div>
-                        )}
-                        <textarea
-                          value={msg.userEdit}
-                          onChange={e => handleEdit(i, e.target.value)}
-                          placeholder="Accept or type your own answer…"
-                          style={{ ...inp, minHeight:48, resize:"none", marginBottom:6, fontSize:10 }}/>
-                        <div style={{ display:"flex", gap:5 }}>
-                          <button onClick={() => handleAccept(i)}
-                            style={{ flex:1, padding:"5px", background:C.accent, border:"none",
-                              borderRadius:4, color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>
-                            ✓ Accept
-                          </button>
-                          {msg.userEdit && (
-                            <button onClick={() => handleSubmitEdit(i)}
-                              style={{ flex:1, padding:"5px", background:C.surface, border:`1px solid ${C.accentL}`,
-                                borderRadius:4, color:C.accentL, fontSize:10, fontWeight:700, cursor:"pointer" }}>
-                              ✎ Use mine
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-              {qaLoading && (
-                <div style={{ fontSize:10, color:C.muted, padding:"6px 0", display:"flex", gap:6, alignItems:"center" }}>
-                  <div style={{ width:8, height:8, borderRadius:"50%", background:C.accentL,
-                    animation:"pulse 1.2s ease-in-out infinite" }}/>
-                  AI thinking…
-                </div>
-              )}
-              <div ref={qaBottomRef}/>
-            </div>
-
-            {/* Free-text input */}
-            <div style={{ padding:"8px 14px", borderTop:`1px solid ${C.border}`, flexShrink:0,
-              display:"flex", gap:6 }}>
-              <input value={qaInput} onChange={e => setQaInput(e.target.value)}
-                onKeyDown={e => e.key==="Enter" && !e.shiftKey && handleFreeInput()}
-                placeholder="Add more project info…"
-                style={{ ...inp, flex:1 }}/>
-              <button onClick={handleFreeInput} disabled={!qaInput.trim()||qaLoading}
-                style={{ padding:"5px 10px", background:qaInput.trim()&&!qaLoading?C.accent:"#1F4D34",
-                  border:"none", borderRadius:4, color:"#fff", fontSize:12, cursor:"pointer" }}>→</button>
-            </div>
-          </div>
-
-          {/* Logout */}
-          {onLogout && (
-            <div style={{ padding:"10px 14px", borderTop:`1px solid ${C.border}`, flexShrink:0 }}>
-              <button onClick={onLogout}
-                style={{ width:"100%", padding:"6px", background:"none", border:`1px solid ${C.border}`,
-                  borderRadius:5, color:C.muted, fontSize:11, cursor:"pointer" }}>
-                ← Log out
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ════════ MAIN AREA — L2 Sheets ════════ */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
-
-          {/* ── AI Status bar — always visible, passive when idle ── */}
-          <div style={{ background: aiStatus ? "rgba(58,153,98,0.12)" : "rgba(18,46,30,0.6)",
-            borderBottom:`1px solid ${aiStatus ? C.accentL+"44" : C.border}`,
-            padding:"4px 16px", fontSize:10,
-            color: aiStatus ? C.accentL : C.muted,
-            display:"flex", alignItems:"center", gap:8, flexShrink:0,
-            transition:"all .3s", minHeight:24 }}>
-            <div style={{ width:6, height:6, borderRadius:"50%",
-              background: aiStatus ? C.accentL : C.muted,
-              animation: aiStatus ? "pulse 1.2s ease-in-out infinite" : "none",
-              flexShrink:0, transition:"background .3s" }}/>
-            {aiStatus || "AI assistant ready"}
-          </div>
-
-          {/* Sheet tabs */}
-          <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`,
-            background:C.surface2, overflowX:"auto", flexShrink:0 }}>
-            {activeSheets.map(id => {
-              const st  = sheets[id]?.status || "empty";
-              const dot = st==="approved"?"#3ae0a2":st==="ai-draft"?"#3a9ce0":st==="in-progress"?"#e0a23a":C.border;
-              const active = id === activeSheet;
-              return (
-                <button key={id} onClick={() => navigateToSheet(id)}
-                  style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px", height:40,
-                    fontSize:11, fontWeight:600, background:"none", border:"none",
-                    borderBottom:`2px solid ${active?C.accentL:"transparent"}`,
-                    color:active?C.sage:C.muted, cursor:"pointer", whiteSpace:"nowrap",
-                    transition:"all .15s" }}>
-                  <div style={{ width:6, height:6, borderRadius:"50%", background:dot, flexShrink:0 }}/>
-                  {SHEET_LABELS[id]}
-                  {sheets[id]?.locked && <span style={{ fontSize:9, color:C.accentL }}>✓</span>}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Sheet header */}
-          <div style={{ padding:"10px 20px", borderBottom:`1px solid ${C.border}`,
-            display:"flex", alignItems:"center", gap:10, flexShrink:0, background:C.surface }}>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:14, fontWeight:700, color:C.sage }}>{SHEET_LABELS[activeSheet]}</div>
-              <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
-                {sheets[activeSheet]?.status === "ai-draft" && "✨ AI-populated — review and adjust"}
-                {sheets[activeSheet]?.status === "approved" && "✓ Saved"}
-                {(!sheets[activeSheet]?.status || sheets[activeSheet]?.status === "empty") && "Empty — fill in or use document upload"}
-              </div>
-            </div>
-            {sheets[activeSheet]?.locked ? (
-              <button onClick={() => onSheetUnlock(activeSheet)}
-                style={{ padding:"6px 12px", background:"none", border:`1px solid ${C.border}`,
-                  borderRadius:5, color:C.dim, fontSize:11, cursor:"pointer" }}>
-                Unlock to Edit
-              </button>
-            ) : (
-              <button onClick={() => { onSheetApprove(activeSheet); setDirtySheet(false); }}
-                style={{ padding:"6px 14px", background:C.accent, border:"none",
-                  borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                Save Changes
-              </button>
-            )}
-            {/* Launch only visible for existing projects */}
-            {isExisting && (
-              <button onClick={onLaunch}
-                style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5,
-                  color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                Launch Project →
-              </button>
-            )}
-          </div>
-
-          {/* Sheet content */}
-          <div style={{ flex:1, overflowY:"auto", padding:"20px" }}
-            onChange={() => setDirtySheet(true)}>
-            {SheetComp && (
-              <SheetComp
-                data={sheets[activeSheet]?.data || {}}
-                locked={sheets[activeSheet]?.locked || false}
-                l1={l1}
-                project={project}
-                loginCodes={l2?.loginCodes || []}
-                allSheets={sheets}
-                onUpdate={(data, status) => {
-                  setDirtySheet(true);
-                  onSheetUpdate(activeSheet, data, status);
-                  // ── Charter → Team sync ──────────────────────────────────
-                  // When PM name is set/changed in Sheet 01, mirror it into
-                  // the Project Manager row in Sheet 02.
-                  // PM edit on Sheet 02 always wins — only sync if the team
-                  // row name is still blank or matches the previous charter value.
-                  if (activeSheet === "01" && data?.charter?.projectManager !== undefined) {
-                    const newPMName  = data.charter.projectManager;
-                    const oldPMName  = sheets["01"]?.data?.charter?.projectManager || "";
-                    const teamMembers = sheets["02"]?.data?.teamMembers || [];
-                    const pmIdx      = teamMembers.findIndex(
-                      m => m.isPM || m.role === "Project Manager"
-                    );
-                    if (pmIdx !== -1) {
-                      const pmRow = teamMembers[pmIdx];
-                      // Only overwrite if team name is blank or still equals old charter value
-                      const canSync = !pmRow.name || pmRow.name === oldPMName;
-                      if (canSync && newPMName) {
-                        const updatedTeam = teamMembers.map((m, i) =>
-                          i === pmIdx ? { ...m, name: newPMName } : m
-                        );
-                        onSheetUpdate("02", { teamMembers: updatedTeam }, sheets["02"]?.status || "ai-draft");
-                      }
-                    }
-                  }
-                  // ── Team PM name → Charter sync ──────────────────────────
-                  // When PM name is edited directly in Sheet 02, mirror it
-                  // back into charter.projectManager if charter field is blank
-                  // or still matches the old team value.
-                  if (activeSheet === "02" && data?.teamMembers) {
-                    const pmRow      = data.teamMembers.find(m => m.isPM || m.role === "Project Manager");
-                    const charter    = sheets["01"]?.data?.charter || {};
-                    const oldTeamPM  = sheets["02"]?.data?.teamMembers?.find(m => m.isPM || m.role === "Project Manager")?.name || "";
-                    if (pmRow?.name && (!charter.projectManager || charter.projectManager === oldTeamPM)) {
-                      onSheetUpdate("01", { charter: { ...charter, projectManager: pmRow.name } }, sheets["01"]?.status || "in-progress");
-                    }
-                  }
-                }}/>
-            )}
-          </div>
-
-          {/* ── Blur overlay — new projects only, lifts after role selection ── */}
-          {/* position:absolute covers only this right panel div, not the left sidebar */}
-          {!blurLifted && (
-            <div style={{ position:"absolute", inset:0, zIndex:10,
-              backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)",
-              background:"rgba(13,43,27,0.60)",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              pointerEvents:"all" }}>
-              <div onClick={e => e.stopPropagation()}
-                style={{ background:C.surface, border:`1px solid ${C.accentL}44`, borderRadius:12,
-                padding:"28px 32px", maxWidth:380, width:"90%", textAlign:"center",
-                boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
-                <div style={{ fontSize:28, marginBottom:12 }}>🏗️</div>
-                <div style={{ fontSize:15, fontWeight:700, color:C.sage, marginBottom:8 }}>
-                  Start your Project Setup
-                </div>
-                <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:8 }}>
-                  Use the left panel to upload documents or let AI guide you through setup.
-                </div>
-                <div style={{ fontSize:11, color:C.dim, lineHeight:1.5, marginBottom:20,
-                  background:C.surface2, borderRadius:6, padding:"8px 12px",
-                  border:`1px solid ${C.border}` }}>
-                  First, tell us who's on your team — this will pre-populate the Team and Charter sheets.
-                </div>
-                <button onClick={() => setShowRolePopup(true)}
-                  style={{ width:"100%", padding:"12px", background:C.accent, border:"none",
-                    borderRadius:7, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
-                    boxShadow:`0 4px 16px ${C.accent}44` }}>
-                  Select Team Roles to Begin →
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+      <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, background:C.surface2, overflowX:"auto", flexShrink:0 }}>
+        {activeSheets.map(id => {
+          const st = sheets[id]?.status||"empty";
+          const dot = st==="approved"?"#3ae0a2":st==="ai-draft"?"#3a9ce0":st==="in-progress"?"#e0a23a":C.border;
+          const active = id===activeSheet;
+          return (
+            <button key={id} onClick={()=>navigateToSheet(id)}
+              style={{ display:"flex", alignItems:"center", gap:6, padding:"0 14px", height:40,
+                fontSize:11, fontWeight:600, background:"none", border:"none",
+                borderBottom:`2px solid ${active?C.accentL:"transparent"}`, color:active?C.sage:C.muted,
+                cursor:"pointer", whiteSpace:"nowrap" }}>
+              <div style={{ width:6, height:6, borderRadius:"50%", background:dot, flexShrink:0 }}/>
+              {SHEET_LABELS[id]}
+              {sheets[id]?.locked && <span style={{ fontSize:9, color:C.accentL }}>✓</span>}
+            </button>
+          );
+        })}
       </div>
 
-      {/* ── Save Changes prompt ── */}
+      <div style={{ padding:"10px 20px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:10, flexShrink:0, background:C.surface }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:C.sage }}>{SHEET_LABELS[activeSheet]}</div>
+          <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
+            {sheets[activeSheet]?.status==="ai-draft" && "✨ AI-populated — review and adjust"}
+            {sheets[activeSheet]?.status==="approved" && "✓ Saved"}
+            {(!sheets[activeSheet]?.status||sheets[activeSheet]?.status==="empty") && "Empty — fill in or use document upload"}
+          </div>
+        </div>
+        {sheets[activeSheet]?.locked ? (
+          <button onClick={()=>onSheetUnlock(activeSheet)}
+            style={{ padding:"6px 12px", background:"none", border:`1px solid ${C.border}`, borderRadius:5, color:C.dim, fontSize:11, cursor:"pointer" }}>Unlock to Edit</button>
+        ) : (
+          <button onClick={()=>{onSheetApprove(activeSheet);setDirtySheet(false);}}
+            style={{ padding:"6px 14px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Save Changes</button>
+        )}
+        {l3Unlocked && (
+          <button onClick={onLaunch} style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Launch Project →</button>
+        )}
+      </div>
+
+      <div style={{ flex:1, overflowY:"auto", padding:"20px" }} onChange={()=>setDirtySheet(true)}>
+        {SheetComp && (
+          <SheetComp data={sheets[activeSheet]?.data||{}} locked={sheets[activeSheet]?.locked||false}
+            project={project} loginCodes={l2?.loginCodes||[]} allSheets={sheets}
+            onUpdate={(data,status)=>{ setDirtySheet(true); onSheetUpdate(activeSheet,data,status); }}/>
+        )}
+      </div>
+
       {savingPrompt && (
-        <div onClick={discardAndNav}
-          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200,
-            display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
-              padding:24, maxWidth:360, width:"90%", boxShadow:"0 8px 32px #0008" }}>
+        <div onClick={discardAndNav} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200,
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
+            padding:24, maxWidth:360, width:"90%", boxShadow:"0 8px 32px #0008" }}>
             <div style={{ fontSize:14, fontWeight:700, color:C.sage, marginBottom:6 }}>Save Changes?</div>
             <div style={{ fontSize:12, color:C.muted, marginBottom:18, lineHeight:1.6 }}>
               You have unsaved changes on <strong style={{ color:C.dim }}>{SHEET_LABELS[activeSheet]}</strong>.
             </div>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              <button onClick={confirmSave}
-                style={{ padding:"9px 14px", background:C.accent, border:"none", borderRadius:6,
-                  color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                💾 Save Changes
-              </button>
-              <button onClick={discardAndNav}
-                style={{ padding:"9px 14px", background:"none", border:`1px solid ${C.risk}22`,
-                  borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>
-                Discard & Continue
-              </button>
+              <button onClick={confirmSave} style={{ padding:"9px 14px", background:C.accent, border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>💾 Save Changes</button>
+              <button onClick={discardAndNav} style={{ padding:"9px 14px", background:"none", border:`1px solid ${C.risk}22`, borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>Discard & Continue</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* ── Role Selection Popup ── */}
-      {showRolePopup && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:300,
-          display:"flex", alignItems:"center", justifyContent:"center", padding:"16px" }}>
-          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12,
-            width:"100%", maxWidth:640, maxHeight:"88vh",
-            display:"flex", flexDirection:"column", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
-
-            {/* Header */}
-            <div style={{ padding:"20px 24px 14px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-              <div style={{ fontSize:15, fontWeight:700, color:C.sage, marginBottom:4 }}>Who's on your team?</div>
-              <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>
-                Select all roles involved. One team member slot is created per role — you can add more people in the Team sheet.
-              </div>
-            </div>
-
-            {/* Scrollable body */}
-            <div style={{ flex:1, overflowY:"auto", padding:"14px 24px" }}>
-
-              {/* AI Suggestions */}
-              <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:C.accentL, textTransform:"uppercase",
-                  letterSpacing:".5px", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-                  <span style={{ width:6, height:6, borderRadius:"50%", background:C.accentL,
-                    display:"inline-block", animation: rolesAiLoading?"pulse 1.2s ease-in-out infinite":"none" }}/>
-                  {rolesAiLoading ? "AI analysing your project…" : aiRoleSuggestions.length > 0 ? "✨ Suggested for this project" : "✨ AI Suggestions"}
-                </div>
-                {rolesAiLoading ? (
-                  <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", padding:"6px 0" }}>
-                    Analysing project context…
-                  </div>
-                ) : aiRoleSuggestions.length > 0 ? (
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-                    {aiRoleSuggestions.map(role => {
-                      const sel = selectedRoles.includes(role);
-                      return (
-                        <button key={role} onClick={() => toggleRole(role)}
-                          style={{ padding:"6px 13px", borderRadius:20, fontSize:11, fontWeight:600,
-                            border:`1px solid ${sel ? C.accentL : C.accentL+"66"}`,
-                            background: sel ? C.accentL+"33" : C.accentL+"11",
-                            color: sel ? C.accentL : C.dim,
-                            cursor:"pointer", transition:"all .15s" }}>
-                          {sel ? "✓ " : "✨ "}{role}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ fontSize:11, color:C.muted, fontStyle:"italic" }}>
-                    Upload a document or enter project details to get AI role suggestions.
-                  </div>
-                )}
-              </div>
-
-              {/* Project Manager — always locked */}
-              <div style={{ marginBottom:14 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
-                  letterSpacing:".5px", marginBottom:8 }}>Always Included</div>
-                <div style={{ display:"inline-flex", alignItems:"center", padding:"6px 13px",
-                  borderRadius:20, fontSize:11, fontWeight:600, border:`1px solid ${C.accentL}`,
-                  background:C.accentL+"22", color:C.accentL }}>
-                  🔒 Project Manager
-                </div>
-              </div>
-
-              {/* Categorised role groups */}
-              {ROLE_GROUPS.map(group => (
-                <div key={group.label} style={{ marginBottom:14 }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
-                    letterSpacing:".5px", marginBottom:8 }}>{group.label}</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                    {group.roles.map(role => {
-                      const sel = selectedRoles.includes(role);
-                      return (
-                        <button key={role} onClick={() => toggleRole(role)}
-                          style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontWeight:600,
-                            border:`1px solid ${sel ? C.accentL : C.border}`,
-                            background: sel ? C.accentL+"22" : "none",
-                            color: sel ? C.accentL : C.muted,
-                            cursor:"pointer", transition:"all .15s" }}>
-                          {sel ? "✓ " : "+ "}{role}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-
-              {/* Custom roles */}
-              {customRoles.length > 0 && (
-                <div style={{ marginBottom:14 }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
-                    letterSpacing:".5px", marginBottom:8 }}>Your Custom Roles</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                    {customRoles.map(role => {
-                      const sel = selectedRoles.includes(role);
-                      return (
-                        <button key={role} onClick={() => toggleRole(role)}
-                          style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontWeight:600,
-                            border:`1px solid ${sel ? C.milestone : C.border}`,
-                            background: sel ? C.milestone+"22" : "none",
-                            color: sel ? C.milestone : C.muted,
-                            cursor:"pointer", transition:"all .15s" }}>
-                          {sel ? "✓ " : "+ "}{role}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Add custom role */}
-              <div style={{ marginBottom:4 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
-                  letterSpacing:".5px", marginBottom:8 }}>Add a Role Not Listed</div>
-                <div style={{ display:"flex", gap:6 }}>
-                  <input value={customRoleInput} onChange={e => setCustomRoleInput(e.target.value)}
-                    onKeyDown={e => e.key==="Enter" && addCustomRole()}
-                    placeholder="e.g. Community Health Worker, Watershed Engineer…"
-                    style={{ flex:1, background:C.surface2, border:`1px solid ${C.border}`,
-                      borderRadius:5, color:C.sage, fontSize:11, padding:"7px 10px",
-                      outline:"none", fontFamily:"inherit" }}/>
-                  <button onClick={addCustomRole} disabled={!customRoleInput.trim()}
-                    style={{ padding:"7px 14px", background: customRoleInput.trim()?C.accent:"#1F4D34",
-                      border:"none", borderRadius:5, color:"#fff", fontSize:11,
-                      fontWeight:700, cursor: customRoleInput.trim()?"pointer":"not-allowed" }}>
-                    Add
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding:"14px 24px", borderTop:`1px solid ${C.border}`, flexShrink:0 }}>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>
-                <strong style={{ color:C.accentL }}>{selectedRoles.length + 1}</strong> role{selectedRoles.length !== 0 ? "s" : ""} selected
-                {selectedRoles.length > 0 && (
-                  <span style={{ color:C.dim }}> — Project Manager
-                    {selectedRoles.slice(0,4).map(r => `, ${r}`)}
-                    {selectedRoles.length > 4 ? ` +${selectedRoles.length - 4} more` : ""}
-                  </span>
-                )}
-              </div>
-              <div style={{ display:"flex", gap:10 }}>
-                <button onClick={() => setShowRolePopup(false)}
-                  style={{ flex:1, padding:"10px", background:"none", border:`1px solid ${C.border}`,
-                    borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>
-                  Cancel
-                </button>
-                <button onClick={confirmRoles} disabled={selectedRoles.length === 0}
-                  style={{ flex:2, padding:"10px",
-                    background: selectedRoles.length > 0 ? C.accent : "#1F4D34",
-                    border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700,
-                    cursor: selectedRoles.length > 0 ? "pointer" : "not-allowed" }}>
-                  Confirm {selectedRoles.length + 1} Roles & Begin Setup →
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
     </div>
   );
 }
