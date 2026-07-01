@@ -364,7 +364,8 @@ function PMSetup({ tier, onConfirm, onBack }) {
 }
 
 // ── Review Extracted Data — optional modal, tables, edits save instantly ────
-function ReviewModal({ sheets, tier, onUpdate, onClose }) {
+function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
+  const [reviewTab, setReviewTab] = useState("structured");
   const charter = sheets["01"]?.data?.charter || {};
   const team    = sheets["02"]?.data?.teamMembers || [];
   const acts         = sheets["03"]?.data?.activities || [];
@@ -441,17 +442,56 @@ function ReviewModal({ sheets, tier, onUpdate, onClose }) {
         width:"100%", maxWidth:1000, maxHeight:"90vh", display:"flex", flexDirection:"column",
         boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
 
-        <div style={{ padding:"18px 24px", borderBottom:`1px solid ${C.border}`, display:"flex",
-          alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
-          <div>
-            <div style={{ fontSize:16, fontWeight:700, color:C.sage }}>Review Extracted Data</div>
-            <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Everything gathered so far — edit directly, changes save instantly.</div>
+        <div style={{ padding:"18px 24px 0", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
+            <div>
+              <div style={{ fontSize:16, fontWeight:700, color:C.sage }}>Review Extracted Data</div>
+              <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Edit directly — changes save instantly.</div>
+            </div>
+            <button onClick={onClose} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+              color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
           </div>
-          <button onClick={onClose} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
-            color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
+          {/* Tab bar */}
+          {[["structured","📋 Structured Data"],["source","📄 Synthesised Document"]].map(([tab,label]) => {
+            const active = (reviewTab||"structured") === tab;
+            return (
+              <button key={tab} onClick={()=>setReviewTab(tab)}
+                style={{ padding:"8px 16px", fontSize:12, fontWeight:active?700:400,
+                  border:"none", borderBottom: active?`2px solid ${C.accentL}`:"2px solid transparent",
+                  background:"none", color:active?C.accentL:C.muted, cursor:"pointer", marginRight:4 }}>
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         <div style={{ flex:1, overflowY:"auto", padding:"20px 24px" }}>
+
+          {/* Synthesised Document tab — the Stage 1 intermediate container */}
+          {(reviewTab||"structured") === "source" && (
+            <div>
+              {intermediateDoc ? (
+                <div>
+                  <div style={{ fontSize:11, color:C.muted, marginBottom:12, lineHeight:1.6 }}>
+                    This is the synthesised project document produced by Stage 1 of the extraction pipeline —
+                    the same operation as manually asking Claude to read all your files and write a comprehensive document.
+                    Stage 2 then extracted the structured data (left tab) from this document.
+                    Anything found here but not yet in a sheet is available for future extraction.
+                  </div>
+                  <pre style={{ fontSize:11, color:C.dim, lineHeight:1.7, whiteSpace:"pre-wrap", wordBreak:"break-word",
+                    background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"14px 16px" }}>
+                    {intermediateDoc}
+                  </pre>
+                </div>
+              ) : (
+                <div style={{ fontSize:12, color:C.muted, fontStyle:"italic" }}>
+                  No synthesised document yet — upload project documents to generate it.
+                </div>
+              )}
+            </div>
+          )}
+
+          {(reviewTab||"structured") === "structured" && (<>
 
           <Section title="Project Overview" count={overviewFields.filter(([k])=>charter[k]).length+"/"+overviewFields.length}>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, background:C.border, borderRadius:6, overflow:"hidden" }}>
@@ -582,6 +622,7 @@ function ReviewModal({ sheets, tier, onUpdate, onClose }) {
               </Section>
             </>
           )}
+          </>)}
         </div>
       </div>
     </div>
@@ -642,12 +683,40 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
   };
 
   const buildContext = () => {
-    const c = sheets["01"]?.data?.charter || {};
+    const c    = sheets["01"]?.data?.charter || {};
+    const team = sheets["02"]?.data?.teamMembers || [];
+    const acts = sheets["03"]?.data?.activities || [];
+    const miles = sheets["03"]?.data?.milestones || [];
+    const risks = sheets["05"]?.data?.risks || [];
+    const shs  = sheets["08"]?.data?.stakeholders || [];
+    const bens = c.benefits || [];
+
+    // Build a rich context string that wizard AI calls can use for smart suggestions
+    const lines = [];
+    if (c.projectName)       lines.push(`Project: ${c.projectName}`);
+    if (c.organisation)      lines.push(`Organisation: ${c.organisation}`);
+    if (c.purpose)           lines.push(`Purpose: ${c.purpose}`);
+    if (c.problemStatement)  lines.push(`Problem: ${c.problemStatement}`);
+    if (c.strategicAlignment) lines.push(`Strategic alignment: ${c.strategicAlignment}`);
+    if (c.startDate || c.endDate) lines.push(`Timeline: ${c.startDate||"TBD"} → ${c.endDate||"TBD"}`);
+    if (c.budget)            lines.push(`Budget: ${c.budget}`);
+    if (c.withinScope?.length) lines.push(`In scope: ${c.withinScope.slice(0,3).join("; ")}`);
+
+    if (team.length)  lines.push(`Team (${team.length}): ${team.map(m=>m.role||m.name).filter(Boolean).slice(0,5).join(", ")}`);
+    if (acts.length)  lines.push(`Activities already extracted (${acts.length}): ${acts.slice(0,5).map(a=>a.name).join(", ")}${acts.length>5?" …":"" }`);
+    if (miles.length) lines.push(`Milestones (${miles.length}): ${miles.map(m=>m.name).join(", ")}`);
+    if (risks.length) lines.push(`Risks already identified (${risks.length}): ${risks.slice(0,5).map(r=>r.name).join(", ")}${risks.length>5?" …":""}`);
+    if (shs.length)   lines.push(`Stakeholders (${shs.length}): ${shs.slice(0,5).map(s=>s.name).join(", ")}${shs.length>5?" …":""}`);
+    if (bens.length)  lines.push(`Benefits (${bens.length}): ${bens.map(b=>b.name).join(", ")}`);
+
     return {
-      projectName: c.projectName||"", purpose: c.purpose||"", organisation: c.organisation||"",
-      projectManager: c.projectManager||"", endDate: c.endDate||"",
-      teamCount: (sheets["02"]?.data?.teamMembers||[]).length,
-      riskCount: (sheets["05"]?.data?.risks||[]).length,
+      // Structured fields for existing callers
+      projectName:   c.projectName||"", purpose: c.purpose||"",
+      organisation:  c.organisation||"", projectManager: c.projectManager||"",
+      endDate:       c.endDate||"",
+      teamCount:     team.length, riskCount: risks.length,
+      // Rich prose summary for AI prompts
+      summary: lines.join("\n"),
     };
   };
 
@@ -680,57 +749,113 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
     return { known, total };
   };
 
-  const runExtraction = async (text, source) => {
-    setAiStatus(`Understanding ${source}…`);
-    const intelPrompt = `Analyse this document in 3-4 sentences: what type of document is it, what project info does it contain, how is it structured (columns, sections, ID patterns), any special notation.
-Document: ${source}
-Content: ${text.slice(0,3000)}`;
-    let analysis = "";
-    try { analysis = await callExtract([{role:"user",content:intelPrompt}], 500); }
-    catch(e) { analysis = "General document — extracting available project data."; }
-    setDocAnalysis(analysis);
+  // ── New two-stage pipeline ─────────────────────────────────────────────────
+  // Stage 1 (once, across ALL files combined): Claude reads all raw files and
+  // writes a comprehensive intermediate project document in prose — same as
+  // what you did manually. This cross-references all files, domain-enriches,
+  // and captures everything including sections beyond the seven guaranteed ones.
+  //
+  // Stage 2 (from intermediate doc, not raw files): Extract structured schema
+  // fields from the clean prose. Because the source is well-structured prose
+  // rather than raw cell dumps, extraction quality matches manual Claude output.
+  //
+  // Floor vs ceiling: the seven sections are guaranteed minimums. Stage 1 is
+  // free to capture comms plans, quality gates, budget breakdowns, constraints,
+  // lessons learned etc. These land in documentSummary and surface in Review Data.
 
-    setAiStatus(`Extracting project data from ${source}…`);
-    const MAX = 24000;
-    const chunk = text.slice(0, MAX);
-    const isExcel = source.toLowerCase().match(/\.xlsx?$/);
+  const [intermediateDoc, setIntermediateDoc] = useState("");
 
-    const prompt = `You are an expert PM extracting structured data from a project document.
-DOCUMENT ANALYSIS: ${analysis}
-SOURCE: ${source}
-${isExcel ? "Note: numeric-letter IDs (A01,B02) are individual tasks to extract as activities; single-letter IDs (A,B,C) are phase headers — use for phase field, do not extract as activities themselves." : ""}
+  const synthesiseDocuments = async (fileContents, sources) => {
+    // Stage 1 — project intelligence engine.
+    // Works for ANY input: rich multi-file documents, a single brief, or even
+    // a one-line description like "birthday party for my 18th". When the input
+    // is sparse, Claude generates a full project plan from PM domain knowledge.
+    // When the input is rich, it extracts and synthesises.
+    // Either way the output is an intermediate project document — the container —
+    // from which Stage 2 extracts the schema fields.
+    const isSparse = fileContents.length === 1 && fileContents[0].text.length < 600;
+    setAiStatus(isSparse ? "Generating project plan…" : "Creating comprehensive project plan from your documents…");
 
-CONTENT:
-${chunk}
+    const combined = fileContents.map(f =>
+      `=== SOURCE: ${f.name} ===\n${f.text.slice(0, 18000)}`
+    ).join("\n\n");
 
-Extract REAL data only, never invent placeholders. Leave fields empty if not found. Dates as YYYY-MM-DD (Excel serial N = days since 1900-01-01).
-For risk likelihood and impact use ONLY these values: "1 - Low", "2 - Medium", "3 - High".
-For activities: leave responsible blank — the PM will assign roles in the Schedule sheet.
-Return ONLY JSON, no markdown:
-{"charter":{"projectName":"","purpose":"","problemStatement":"","startDate":"","endDate":"","budget":"","projectManager":"","projectSponsor":"","organisation":"","strategicAlignment":"","withinScope":[],"outOfScope":[]},"team":[{"name":"","role":""}],"activities":[{"name":"","phase":"","startDate":"","targetDate":"","_complete":false,"plannedCost":""}],"milestones":[{"name":"","phase":"","targetDate":"","_complete":false}],"risks":[{"name":"","cause":"","potentialImpact":"","likelihood":"2 - Medium","impact":"2 - Medium","response":"Reduce","mitigation":"","category":""}],"stakeholders":[{"name":"","category":"","power":"5","interest":"5","influence":"5","ease":"5"}],"benefits":[{"name":"","description":"","category":"Strategic","owner":"","targetDate":""}]}`;
+    const sourceList = sources.join(", ");
 
-    const raw = await callExtract([{role:"user",content:prompt}], 8000);
-    const extracted = safeParseJSON(raw);
+    const stage1Prompt = `You are a senior project manager. Based on the input below, produce a comprehensive, well-structured project document suitable for setting up a full project management platform.
 
-    // ── Charter (C2: now includes strategicAlignment, withinScope, outOfScope) ──
-    // ── Charter + benefits — single atomic write to avoid race condition ──────
-    // Reading stale `sheets` twice and calling onSheetUpdate("01") twice would
-    // cause the second write to overwrite the first (both read the same pre-write
-    // snapshot). Merge all charter-level changes into one call.
+SOURCES: ${sourceList}
+
+INPUT:
+${combined}
+
+---
+
+${isSparse
+  ? `The input is a brief description or idea. Use your project management expertise to generate a realistic, detailed project plan from it. Mark generated content with [Generated] and content drawn from the input with [From input]. Be creative but realistic — treat it as a real project.`
+  : `The input contains project documents. Synthesise ALL of them into one comprehensive document. Cross-reference between files. Preserve all dates, codes, IDs, and numeric values exactly. Mark extracted content with [Extracted] and domain-enriched additions with [Recommended].`}
+
+Produce a project document covering ALL sections below. Go beyond this list wherever the input provides richer information (communications plans, quality gates, budget breakdowns, governance, change control, lessons learned, etc.).
+
+1. PROJECT OVERVIEW — name, code, PM, sponsor, organisation, dates, budget
+2. PURPOSE, PROBLEM & STRATEGIC ALIGNMENT
+3. SCOPE — within scope (numbered list); out of scope (numbered list)
+4. PROJECT TEAM — all members with names, roles, governance tiers
+5. PROJECT SCHEDULE — all phases; every activity (name, phase, responsible role, start date, target date, description); every milestone (name, phase, target date). ${isSparse ? "Generate a realistic full schedule." : "Extract ALL activities found — never truncate."}
+6. RISK REGISTER — every risk (name, cause, potential impact, likelihood 1–3, impact 1–3, mitigation, response, category). ${isSparse ? "Generate 6–10 realistic risks." : "Extract all risks."}
+7. STAKEHOLDER REGISTER — every stakeholder (name, role, power 1–10, interest 1–10, influence 1–10, ease 1–10, engagement strategy)
+8. BENEFITS & OBJECTIVES — each benefit with nested objectives (objective, success criterion/KPI, target date)
+9. DELIVERABLES & KPIs
+10. CONSTRAINTS, ASSUMPTIONS & DEPENDENCIES
+
+Be exhaustive. Never truncate. ${isSparse ? "A sparse input should produce a complete, professional project plan — this is the value the engine provides." : ""}`;
+
+    const intermediateText = await callExtract(
+      [{ role:"user", content:stage1Prompt }], 6000
+    );
+    setIntermediateDoc(intermediateText);
+    setDocAnalysis(intermediateText.slice(0, 500) + (intermediateText.length > 500 ? "…" : ""));
+    return intermediateText;
+  };
+
+
+  const extractSchemaFromDocument = async (intermediateText) => {
+    setAiStatus("Extracting structured data from synthesised document…");
+    const prompt = `Extract ALL structured project data from this project document into the JSON schema below.
+
+DOCUMENT:
+${intermediateText.slice(0, 28000)}
+
+Rules:
+- Extract ALL items — never truncate activities, risks, or stakeholders
+- Dates: YYYY-MM-DD format
+- Responsible: ROLE names only (e.g. "Project Manager", "Research Coordinator") — never person names
+- Risk likelihood/impact: ONLY "1 - Low", "2 - Medium", or "3 - High"
+- Benefits must include nested objectives where defined
+- withinScope and outOfScope as string arrays
+- documentSummary: one paragraph prose summary of the whole project for context
+
+Return ONLY JSON, no markdown, no preamble:
+{"charter":{"projectName":"","purpose":"","problemStatement":"","strategicAlignment":"","startDate":"","endDate":"","budget":"","projectManager":"","projectSponsor":"","organisation":"","withinScope":[],"outOfScope":[]},"team":[{"name":"","role":""}],"activities":[{"name":"","phase":"","responsible":"","description":"","startDate":"","targetDate":"","_complete":false,"plannedCost":""}],"milestones":[{"name":"","phase":"","targetDate":"","_complete":false}],"risks":[{"name":"","cause":"","potentialImpact":"","likelihood":"2 - Medium","impact":"2 - Medium","response":"Reduce","mitigation":"","category":""}],"stakeholders":[{"name":"","category":"","power":"5","interest":"5","influence":"5","ease":"5","engagementStrategy":""}],"benefits":[{"name":"","description":"","category":"Strategic","owner":"","targetDate":"","objectives":[{"objective":"","successCriterion":"","targetDate":""}]}],"documentSummary":""}`;
+
+    const raw = await callExtract([{ role:"user", content:prompt }], 12000);
+    return safeParseJSON(raw);
+  };
+
+  const applyExtractedData = (extracted) => {
+    // Sheet 01 — charter + benefits (single atomic write, no race condition)
     if (extracted.charter || extracted.benefits?.length) {
       const c = sheets["01"]?.data?.charter || {};
       const mergedCharter = { ...c };
-
-      // Charter fields
       if (extracted.charter) {
         Object.entries(extracted.charter).forEach(([k,v]) => {
-          if (!v || c[k]) return;
-          if (Array.isArray(v) && v.length === 0) return;
-          mergedCharter[k] = v;
+          if (Array.isArray(v)) { if (v.length > 0 && !(c[k]?.length)) mergedCharter[k] = v; }
+          else if (v && !c[k]) mergedCharter[k] = v;
         });
       }
-
-      // Benefits (C1 fix: write to charter.benefits, not KD Tracker deliverables)
+      if (extracted.documentSummary && !mergedCharter.documentSummary) {
+        mergedCharter.documentSummary = extracted.documentSummary;
+      }
       if (extracted.benefits?.length) {
         const existingBens = c.benefits || [];
         const newBens = extracted.benefits
@@ -739,177 +864,96 @@ Return ONLY JSON, no markdown:
             _id:`BEN-${String(existingBens.length+i+1).padStart(3,"0")}`,
             name:b.name, description:b.description||"", category:b.category||"Strategic",
             owner:b.owner||"", targetDate:b.targetDate||"",
-            sustainmentPlan:"", lessonsLearned:"", objectives:[],
+            sustainmentPlan:"", lessonsLearned:"",
+            objectives:(b.objectives||[]).map((o,j) => ({
+              _id:`OBJ-${String(j+1).padStart(3,"0")}`,
+              objective:o.objective||"", successCriterion:o.successCriterion||"", targetDate:o.targetDate||"",
+            })),
           }));
         if (newBens.length) mergedCharter.benefits = [...existingBens, ...newBens];
       }
-
-      const hasChanges = JSON.stringify(mergedCharter) !== JSON.stringify(c);
-      if (hasChanges) onSheetUpdate("01", { charter: mergedCharter }, "ai-draft");
+      if (JSON.stringify(mergedCharter) !== JSON.stringify(c)) {
+        onSheetUpdate("01", { charter: mergedCharter }, "ai-draft");
+      }
     }
 
+    // Sheet 02 — team
     const existingTeam = sheets["02"]?.data?.teamMembers || [];
-    const SINGLE_HOLDER_ROLES = ["Project Manager", "Project Sponsor"];
+    const SINGLE_ROLES = ["Project Manager","Project Sponsor"];
     if (extracted.team?.length) {
       const existingCodes = [...(l2?.loginCodes||[]).map(m=>m.loginCode), ...existingTeam.map(m=>m.loginCode).filter(Boolean)];
       const newM = extracted.team.filter(m => {
         if (!m.name) return false;
-        if (SINGLE_HOLDER_ROLES.includes(m.role) && existingTeam.some(e => e.role === m.role)) return false;
+        if (SINGLE_ROLES.includes(m.role) && existingTeam.some(e => e.role === m.role)) return false;
         return !existingTeam.some(e => e.name?.toLowerCase() === m.name.toLowerCase());
-      }).map((m,i)=>{
+      }).map((m,i) => {
         const code = generateLoginCode(project?.code || "NC", existingCodes);
         existingCodes.push(code);
-        return {_id:`TM-${String(existingTeam.length+i+1).padStart(3,"0")}`,name:m.name,role:m.role||"",
-          deliveryRole:"",availability:"",loginCode:code,location:"",responsibilities:""};
+        return { _id:`TM-${String(existingTeam.length+i+1).padStart(3,"0")}`, name:m.name, role:m.role||"",
+          deliveryRole:"", availability:"", loginCode:code, location:"", responsibilities:"" };
       });
-      if (newM.length) {
-        onSheetUpdate("02", { teamMembers:[...existingTeam,...newM] }, "ai-draft");
-        // App.jsx handleSheetUpdate("02") now auto-syncs to l2.loginCodes (H1 fix in Batch 1)
+      if (newM.length) onSheetUpdate("02", { teamMembers:[...existingTeam,...newM] }, "ai-draft");
+    }
+
+    // Sheet 03 — activities + milestones (single atomic write — no race condition)
+    {
+      const existingActs  = sheets["03"]?.data?.activities || [];
+      const existingMiles = sheets["03"]?.data?.milestones || [];
+      let finalActs = [...existingActs], finalMiles = [...existingMiles], changed = false;
+      if (extracted.activities?.length) {
+        const newA = extracted.activities
+          .filter(a => a.name && !existingActs.some(e => e.name?.toLowerCase().trim() === a.name.toLowerCase().trim()))
+          .map((a,i) => ({
+            _id:`ACT-${String(existingActs.length+i+1).padStart(3,"0")}`,
+            name:a.name, phase:a.phase||"", startDate:a.startDate||"", targetDate:a.targetDate||"",
+            responsible: a.responsible && /coordinator|manager|lead|curator|controller|scheduler|analyst|specialist/i.test(a.responsible) ? a.responsible : "",
+            description:a.description||"",
+            _complete:a._complete||false, _state:a._complete?"complete":"pending", plannedCost:a.plannedCost||"",
+          }));
+        if (newA.length) { finalActs = [...existingActs,...newA]; changed = true; }
       }
+      if (extracted.milestones?.length) {
+        const newMs = extracted.milestones
+          .filter(m => m.name && !existingMiles.some(e => e.name?.toLowerCase().trim() === m.name.toLowerCase().trim()))
+          .map((m,i) => ({
+            _id:`MS-${String(existingMiles.length+i+1).padStart(3,"0")}`,
+            name:m.name, phase:m.phase||"", targetDate:m.targetDate||"",
+            _complete:m._complete||false, _state:m._complete?"complete":"pending",
+          }));
+        if (newMs.length) { finalMiles = [...existingMiles,...newMs]; changed = true; }
+      }
+      if (changed) onSheetUpdate("03", { activities:finalActs, milestones:finalMiles }, "ai-draft");
     }
 
-    const existingActs  = sheets["03"]?.data?.activities || [];
-    const existingMiles = sheets["03"]?.data?.milestones || [];
-    if (extracted.activities?.length) {
-      const newA = extracted.activities.filter(a=>a.name && !existingActs.some(e=>e.name?.toLowerCase().trim()===a.name.toLowerCase().trim()))
-        .map((a,i)=>({
-          _id:`ACT-${String(existingActs.length+i+1).padStart(3,"0")}`,
-          name:a.name, phase:a.phase||"", startDate:a.startDate||"",
-          targetDate:a.targetDate||"",
-          responsible:"",          // C4 fix: never write extracted person names into responsible
-          _complete:a._complete||false, _state:a._complete?"complete":"pending",
-          plannedCost:a.plannedCost||"",
-        }));
-      if (newA.length) onSheetUpdate("03", { activities:[...existingActs,...newA], milestones:existingMiles }, "ai-draft");
-    }
-    if (extracted.milestones?.length) {
-      const newMs = extracted.milestones.filter(m=>m.name && !existingMiles.some(e=>e.name?.toLowerCase().trim()===m.name.toLowerCase().trim()))
-        .map((m,i)=>({
-          _id:`MS-${String(existingMiles.length+i+1).padStart(3,"0")}`,
-          name:m.name, phase:m.phase||"", targetDate:m.targetDate||"",
-          _complete:m._complete||false, _state:m._complete?"complete":"pending",
-        }));
-      if (newMs.length) { const acts=sheets["03"]?.data?.activities||[]; onSheetUpdate("03", { activities:acts, milestones:[...existingMiles,...newMs] }, "ai-draft"); }
-    }
-
+    // Sheet 05 — risks
     const existingRisks = sheets["05"]?.data?.risks || [];
     if (extracted.risks?.length) {
-      // H2 fix: normalise raw numeric levels to the "N - Label" format Sheet05 expects
-      const normLevel = (v) => {
-        if (!v) return "2 - Medium";
-        const s = String(v).trim();
-        if (s.includes("-")) return s; // already in correct format
-        const n = parseInt(s);
-        if (n === 1) return "1 - Low";
-        if (n === 3) return "3 - High";
-        return "2 - Medium";
-      };
-      const newR = extracted.risks.filter(r=>r.name && !existingRisks.some(e=>e.name?.toLowerCase().trim()===r.name.toLowerCase().trim()))
-        .map((r,i)=>({
+      const normLevel = (v) => { const s=String(v||"").trim(); if(s.includes("-")) return s; const n=parseInt(s); return n===1?"1 - Low":n===3?"3 - High":"2 - Medium"; };
+      const newR = extracted.risks
+        .filter(r => r.name && !existingRisks.some(e => e.name?.toLowerCase().trim() === r.name.toLowerCase().trim()))
+        .map((r,i) => ({
           _id:`R-${String(101+existingRisks.length+i)}`, name:r.name, cause:r.cause||"",
-          potentialImpact:r.potentialImpact||"",
-          likelihood:normLevel(r.likelihood), impact:normLevel(r.impact),
+          potentialImpact:r.potentialImpact||"", likelihood:normLevel(r.likelihood), impact:normLevel(r.impact),
           response:r.response||"Reduce", mitigation:r.mitigation||"", category:r.category||"",
         }));
       if (newR.length) onSheetUpdate("05", { risks:[...existingRisks,...newR] }, "ai-draft");
     }
 
+    // Sheet 08 — stakeholders (Full tier only)
     if (tier === "full") {
       const existingSH = sheets["08"]?.data?.stakeholders || [];
       if (extracted.stakeholders?.length) {
-        const newSH = extracted.stakeholders.filter(s=>s.name && !existingSH.some(e=>e.name?.toLowerCase()===s.name.toLowerCase()))
-          .map((s,i)=>({
+        const newSH = extracted.stakeholders
+          .filter(s => s.name && !existingSH.some(e => e.name?.toLowerCase() === s.name.toLowerCase()))
+          .map((s,i) => ({
             _id:`SH-${String(existingSH.length+i+1).padStart(3,"0")}`, name:s.name, category:s.category||"",
             power:parseInt(s.power)||5, interest:parseInt(s.interest)||5,
             influence:parseInt(s.influence)||5, ease:parseInt(s.ease)||5,
-            status:"Identified", scoreHistory:[], statusHistory:[], engagementStrategy:"",
+            status:"Identified", scoreHistory:[], statusHistory:[],
+            engagementStrategy:s.engagementStrategy||"",
           }));
         if (newSH.length) onSheetUpdate("08", { stakeholders:[...existingSH,...newSH] }, "ai-draft");
       }
-    }
-
-    // ── Generation pass — fill any gaps that extraction missed ────────────────
-    // If the document was sparse or poorly structured, generate reasonable content
-    // using the project context we've accumulated.
-    await generateMissingContent(source);
-
-    setAiStatus("");
-  };
-
-  // Generate activities, risks, and missing charter fields when extraction leaves gaps.
-  // This runs AFTER extraction so we never overwrite extracted data.
-  const generateMissingContent = async (source) => {
-    const c = sheets["01"]?.data?.charter || {};
-    const projectName   = c.projectName   || "";
-    const purpose       = c.purpose       || "";
-    const organisation  = c.organisation  || "";
-    const existingActs  = sheets["03"]?.data?.activities || [];
-    const existingRisks = sheets["05"]?.data?.risks || [];
-
-    // Only generate if we have at minimum a project name or purpose to work from
-    if (!projectName && !purpose) return;
-
-    const contextStr = [
-      projectName  ? `Project: ${projectName}`    : "",
-      organisation ? `Organisation: ${organisation}` : "",
-      purpose      ? `Purpose: ${purpose}`           : "",
-      c.problemStatement ? `Problem: ${c.problemStatement}` : "",
-    ].filter(Boolean).join("\n");
-
-    // Generate activities if extraction found none
-    if (existingActs.length === 0) {
-      setAiStatus("Generating project schedule…");
-      try {
-        const prompt = `You are an expert PM. Based on this project context, generate a realistic project schedule of 6-10 activities across APM lifecycle phases (Concept, Definition, Development, Handover & Closeout).
-
-${contextStr}
-
-Return ONLY JSON, no markdown:
-{"activities":[{"name":"","phase":"","responsible":"","description":""}]}
-
-Rules:
-- Use ONLY these phases: Concept, Definition, Development, Handover & Closeout
-- Leave responsible blank
-- Make activity names specific to this project — not generic "Phase 1" labels
-- Aim for 6-10 activities`;
-        const raw = await callExtract([{role:"user",content:prompt}], 2000);
-        const parsed = safeParseJSON(raw);
-        if (parsed.activities?.length) {
-          const newA = parsed.activities.filter(a => a.name).map((a,i) => ({
-            _id:`ACT-${String(i+1).padStart(3,"0")}`,
-            name:a.name, phase:a.phase||"Definition", responsible:"",
-            description:a.description||"", _complete:false, _state:"pending",
-          }));
-          if (newA.length) onSheetUpdate("03", { activities:newA, milestones: sheets["03"]?.data?.milestones||[] }, "ai-draft");
-        }
-      } catch(e) { /* non-fatal */ }
-    }
-
-    // Generate risks if extraction found none
-    if (existingRisks.length === 0) {
-      setAiStatus("Generating risk register…");
-      try {
-        const prompt = `You are a project risk expert. Based on this project context, identify 4-6 realistic risks.
-
-${contextStr}
-
-Return ONLY JSON, no markdown:
-{"risks":[{"name":"","cause":"","potentialImpact":"","likelihood":"2 - Medium","impact":"2 - Medium","response":"Reduce","mitigation":"","category":""}]}
-
-Use ONLY these likelihood/impact values: "1 - Low", "2 - Medium", "3 - High"
-Categories: Strategic, Operational, Financial, Stakeholder, Technical, External`;
-        const raw = await callExtract([{role:"user",content:prompt}], 1500);
-        const parsed = safeParseJSON(raw);
-        if (parsed.risks?.length) {
-          const newR = parsed.risks.filter(r => r.name).map((r,i) => ({
-            _id:`R-${String(101+i)}`, name:r.name, cause:r.cause||"",
-            potentialImpact:r.potentialImpact||"", likelihood:r.likelihood||"2 - Medium",
-            impact:r.impact||"2 - Medium", response:r.response||"Reduce",
-            mitigation:r.mitigation||"", category:r.category||"",
-          }));
-          if (newR.length) onSheetUpdate("05", { risks:newR }, "ai-draft");
-        }
-      } catch(e) { /* non-fatal */ }
     }
   };
 
@@ -917,6 +961,7 @@ Categories: Strategic, Operational, Financial, Stakeholder, Technical, External`
     const files = Array.from(e.target.files||[]);
     if (!files.length) return;
     setExtracting(true);
+    const fileContents = [];
     for (const file of files) {
       setAiStatus(`Reading ${file.name}…`);
       try {
@@ -931,13 +976,22 @@ Categories: Strategic, Operational, Financial, Stakeholder, Technical, External`
         } else {
           text = await file.text();
         }
-        if (!text.trim()) continue;
-        setFileList(prev => [...prev, file.name]);
-        await runExtraction(text, file.name);
-      } catch(err) {
-        setAiStatus(`⚠ ${file.name}: ${err.message}`);
-      }
+        if (text.trim()) {
+          fileContents.push({ name: file.name, text });
+          setFileList(prev => [...prev, file.name]);
+        }
+      } catch(err) { setAiStatus(`⚠ ${file.name}: ${err.message}`); }
     }
+
+    if (fileContents.length > 0) {
+      try {
+        const intermediateText = await synthesiseDocuments(fileContents, fileContents.map(f=>f.name));
+        const extracted = await extractSchemaFromDocument(intermediateText);
+        applyExtractedData(extracted);
+        await generateMissingContent("documents").catch(()=>{});
+      } catch(err) { setAiStatus(`⚠ Extraction error: ${err.message}`); }
+    }
+
     setExtracting(false);
     setAiStatus("");
     e.target.value = "";
@@ -947,12 +1001,23 @@ Categories: Strategic, Operational, Financial, Stakeholder, Technical, External`
     if (!pasteText.trim()) return;
     setExtracting(true);
     try {
-      await runExtraction(pasteText, "your notes");
+      // Paste text goes through the full two-stage pipeline — same as file upload.
+      // This means "I want to organise a birthday party for my 18th" produces a
+      // complete project plan in the intermediate container, then extracts to schema.
+      const intermediateText = await synthesiseDocuments(
+        [{ name:"pasted description", text:pasteText }],
+        ["pasted description"]
+      );
+      const extracted = await extractSchemaFromDocument(intermediateText);
+      applyExtractedData(extracted);
       setFileList(prev => [...prev, "Pasted text"]);
       setPasteText("");
+      await generateMissingContent("paste").catch(()=>{});
     } catch(err) { setAiStatus(`⚠ ${err.message}`); }
     setExtracting(false);
+    setAiStatus("");
   };
+
 
   const enterWizard = () => {
     setPhase("wizard");
@@ -1153,17 +1218,23 @@ If no clear milestones are described, return {"milestones":[]}`;
     const ctx = buildContext();
     const existingItems = fieldKey === "teamRoles" ? getTeamRoles() : getChipItems(fieldKey);
     const labels = {
-      risks: "potential project risks",
-      stakeholders: "key stakeholders",
-      benefits: "strategic benefits",
-      sustainFocus: "sustainability focus areas",
+      risks: "potential project risks (not already in the risk register)",
+      stakeholders: "key stakeholders (not already listed)",
+      benefits: "strategic benefits (not already listed)",
+      sustainFocus: "sustainability focus areas applicable to this project",
     };
     try {
-      const prompt = `Project: ${ctx.projectName||"Unnamed"}. Purpose: ${ctx.purpose||"not yet specified"}. Tier: ${tier}.
-Already selected: ${existingItems.join(", ")||"none"}.
-Suggest 5-6 ${labels[fieldKey]||fieldKey} relevant to THIS SPECIFIC project (infer from name/purpose, don't assume one domain — could be construction, research, community, tech, events etc). Do not repeat already selected items.
-Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
-      const raw = await callExtract([{role:"user",content:prompt}], 400);
+      const prompt = `You are a project management expert advising on ${labels[fieldKey]||fieldKey}.
+
+PROJECT CONTEXT:
+${ctx.summary || `Project: ${ctx.projectName||"Unnamed"}. Purpose: ${ctx.purpose||"not yet specified"}.`}
+
+Already selected / captured: ${existingItems.join(", ")||"none"}.
+
+Suggest 5-6 additional ${labels[fieldKey]||fieldKey} highly specific to THIS project. Base suggestions on the full context above — reference the industry, objectives, team structure, and constraints where relevant. Do not repeat items already captured.
+
+Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","item5"]}`;
+      const raw = await callExtract([{role:"user",content:prompt}], 500);
       const parsed = safeParseJSON(raw);
       setAiChipSuggestions(prev => ({ ...prev, [clusterId]: parsed.suggestions||[] }));
     } catch(e) {
@@ -1178,14 +1249,14 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
   const purposePopulated = useRef(false);
   useEffect(() => {
     if (currentCluster?.id !== "c2") return;
-    // Use ref to avoid stale closure on sheets — set once when purpose is detected as filled
     const currentPurpose = sheets["01"]?.data?.charter?.purpose;
     if (currentPurpose) { purposePopulated.current = true; return; }
     if (purposePopulated.current) return;
     setPurposeLoading(true);
     const ctx = buildContext();
+    const ctxStr = ctx.summary || `Project: "${ctx.projectName||"Unnamed project"}"`;
     callExtract([{role:"user",content:
-      `Project name: "${ctx.projectName||"Unnamed project"}". Suggest a concise, specific one-sentence purpose statement (what it will achieve, with a measurable outcome if possible). Return ONLY the sentence, no quotes, no preamble.`
+      `${ctxStr}\n\nSuggest a concise, specific one-sentence purpose statement for this project (what it will achieve, with a measurable outcome if possible). Return ONLY the sentence, no quotes, no preamble.`
     }], 150).then(text => setPurposeSuggestion(text.trim())).catch(()=>setPurposeSuggestion("")).finally(()=>setPurposeLoading(false));
   }, [currentCluster?.id, sheets]);
 
@@ -1576,7 +1647,7 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
         <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
 
         {showReview && (
-          <ReviewModal sheets={sheets} tier={tier} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
+          <ReviewModal sheets={sheets} tier={tier} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
         )}
       </div>
     );
@@ -1681,7 +1752,7 @@ Return ONLY JSON: {"suggestions":["item1","item2","item3","item4","item5"]}`;
       )}
 
       {showReview && (
-        <ReviewModal sheets={sheets} tier={tier} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
+        <ReviewModal sheets={sheets} tier={tier} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
       )}
     </div>
   );
