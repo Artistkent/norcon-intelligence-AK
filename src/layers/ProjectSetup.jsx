@@ -365,7 +365,7 @@ function PMSetup({ tier, onConfirm, onBack }) {
 
 // ── Review Extracted Data — optional modal, tables, edits save instantly ────
 function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
-  const [reviewTab, setReviewTab] = useState("structured");
+  const [reviewTab, setReviewTab] = useState(intermediateDoc ? "source" : "structured");
   const charter = sheets["01"]?.data?.charter || {};
   const team    = sheets["02"]?.data?.teamMembers || [];
   const acts         = sheets["03"]?.data?.activities || [];
@@ -452,8 +452,11 @@ function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
               color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
           </div>
           {/* Tab bar */}
-          {[["structured","📋 Structured Data"],["source","📄 Synthesised Document"]].map(([tab,label]) => {
-            const active = (reviewTab||"structured") === tab;
+          {[
+            ["source",     `📄 Synthesised Document${intermediateDoc ? "" : " (empty)"}`],
+            ["structured", "📋 Structured Data"],
+          ].map(([tab,label]) => {
+            const active = reviewTab === tab;
             return (
               <button key={tab} onClick={()=>setReviewTab(tab)}
                 style={{ padding:"8px 16px", fontSize:12, fontWeight:active?700:400,
@@ -467,31 +470,32 @@ function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
 
         <div style={{ flex:1, overflowY:"auto", padding:"20px 24px" }}>
 
-          {/* Synthesised Document tab — the Stage 1 intermediate container */}
-          {(reviewTab||"structured") === "source" && (
+          {/* Synthesised Document tab */}
+          {reviewTab === "source" && (
             <div>
               {intermediateDoc ? (
                 <div>
-                  <div style={{ fontSize:11, color:C.muted, marginBottom:12, lineHeight:1.6 }}>
-                    This is the synthesised project document produced by Stage 1 of the extraction pipeline —
-                    the same operation as manually asking Claude to read all your files and write a comprehensive document.
-                    Stage 2 then extracted the structured data (left tab) from this document.
-                    Anything found here but not yet in a sheet is available for future extraction.
+                  <div style={{ fontSize:11, color:C.muted, marginBottom:12, lineHeight:1.6,
+                    background:C.surface, borderRadius:6, padding:"10px 14px", border:`1px solid ${C.border}` }}>
+                    This is the project document created by the AI engine in Stage 1 — the "container".
+                    It was written by synthesising everything in your uploaded files (or generating from your description).
+                    Stage 2 then extracted the structured data on the right tab from this document.
+                    Anything captured here beyond the seven standard sections is available for future extraction as new sheets are added.
                   </div>
                   <pre style={{ fontSize:11, color:C.dim, lineHeight:1.7, whiteSpace:"pre-wrap", wordBreak:"break-word",
-                    background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"14px 16px" }}>
+                    background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"14px 16px", margin:0 }}>
                     {intermediateDoc}
                   </pre>
                 </div>
               ) : (
-                <div style={{ fontSize:12, color:C.muted, fontStyle:"italic" }}>
-                  No synthesised document yet — upload project documents to generate it.
+                <div style={{ fontSize:12, color:C.muted, fontStyle:"italic", padding:"20px 0" }}>
+                  No synthesised document yet. Upload project files or paste a description in the Document Intelligence section to generate it.
                 </div>
               )}
             </div>
           )}
 
-          {(reviewTab||"structured") === "structured" && (<>
+          {reviewTab === "structured" && (<>
 
           <Section title="Project Overview" count={overviewFields.filter(([k])=>charter[k]).length+"/"+overviewFields.length}>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, background:C.border, borderRadius:6, overflow:"hidden" }}>
@@ -988,7 +992,10 @@ Return ONLY JSON, no markdown, no preamble:
         const intermediateText = await synthesiseDocuments(fileContents, fileContents.map(f=>f.name));
         const extracted = await extractSchemaFromDocument(intermediateText);
         applyExtractedData(extracted);
-        await generateMissingContent("documents").catch(()=>{});
+        // Only generate missing content if still in setup — never write to sheets post-launch
+        if (state.activeLayer !== "L3") {
+          await generateMissingContent("documents").catch(()=>{});
+        }
       } catch(err) { setAiStatus(`⚠ Extraction error: ${err.message}`); }
     }
 
@@ -1012,7 +1019,9 @@ Return ONLY JSON, no markdown, no preamble:
       applyExtractedData(extracted);
       setFileList(prev => [...prev, "Pasted text"]);
       setPasteText("");
-      await generateMissingContent("paste").catch(()=>{});
+      if (state.activeLayer !== "L3") {
+        await generateMissingContent("paste").catch(()=>{});
+      }
     } catch(err) { setAiStatus(`⚠ ${err.message}`); }
     setExtracting(false);
     setAiStatus("");
@@ -1040,8 +1049,10 @@ Return ONLY JSON, no markdown, no preamble:
     // Wizard complete — generate missing content before entering Personalisation
     setPhase("done");
     setActiveSheet(tierCfg.sheets[0]);
-    // Run in background — don't block transition to Personalisation
-    generateMissingContent("wizard").catch(()=>{});
+    // Only run in background if still in setup — never post-launch
+    if (state.activeLayer !== "L3") {
+      generateMissingContent("wizard").catch(()=>{});
+    }
   };
 
   const goBackWizard = () => {
@@ -1400,11 +1411,16 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
         <div style={{ background:C.surface2, borderBottom:`1px solid ${C.border}`, padding:"10px 24px", flexShrink:0 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:11, color:C.muted, marginBottom:6 }}>
             <span>Setting up <strong style={{ color:C.accentL }}>{SHEET_LABELS[currentSheetId]}</strong></span>
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ color:C.dim }}>{progress.known} of {progress.total} fields gathered ({progressPct}%)</span>
               <button onClick={()=>setShowReview(true)}
                 style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.accentL}55`, borderRadius:5,
                   color:C.accentL, fontSize:10, fontWeight:600, cursor:"pointer" }}>📋 Review Data</button>
+              {(l2?.loginCodes||[]).length > 0 && (
+                <button onClick={onLaunch}
+                  style={{ padding:"5px 12px", background:C.accent, border:"none", borderRadius:5,
+                    color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>🚀 Launch Project →</button>
+              )}
               {onLogout && (
                 <button onClick={onLogout}
                   style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.border}`, borderRadius:5,

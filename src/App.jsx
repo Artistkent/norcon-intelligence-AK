@@ -388,8 +388,8 @@ export default function App() {
               {l3Unlocked && (
                 <button onClick={handleGoToL3}
                   style={{ padding:"5px 12px", fontSize:11, fontWeight:700, borderRadius:5,
-                    border:`1px solid ${C.accent}`, background:C.accent, color:"#fff", cursor:"pointer" }}>
-                  L3 · Operational →
+                    border:"none", background:C.accent, color:"#fff", cursor:"pointer" }}>
+                  🚀 Launch Project →
                 </button>
               )}
               {state.projectTier && (
