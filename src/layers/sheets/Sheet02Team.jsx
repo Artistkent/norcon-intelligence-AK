@@ -65,22 +65,21 @@ function generateExternalCode(type) {
 }
 
 export default function Sheet02Team({ data, locked, loginCodes, project, onUpdate }) {
-  const [members, setMembers] = useState(() => {
-    // Prefer data.teamMembers if populated (the authoritative rich-detail store)
-    // Fall back to loginCodes for display if teamMembers is empty but codes exist
-    if (data.teamMembers && data.teamMembers.length > 0) return data.teamMembers;
-    return loginCodes.map(lc => ({
-      loginCode: lc.loginCode, name: lc.name||"", role: lc.role||"",
-      deliveryRole: lc.deliveryRole||"", availability:"80%", responsibilities:"", location:"",
-    }));
-  });
+  // Fully controlled — derived from props every render. No stale local copy:
+  // background extraction or wizard writes to teamMembers are always reflected,
+  // and a local edit can never overwrite them with an outdated snapshot.
+  const members = (data.teamMembers && data.teamMembers.length > 0)
+    ? data.teamMembers
+    : loginCodes.map(lc => ({
+        loginCode: lc.loginCode, name: lc.name||"", role: lc.role||"",
+        deliveryRole: lc.deliveryRole||"", availability:"80%", responsibilities:"", location:"",
+      }));
 
-  const [external, setExternal] = useState(data.externalUsers || []);
-  const [copied,   setCopied]   = useState(null);
+  const external = data.externalUsers || [];
+  const [copied, setCopied] = useState(null); // UI-only state
 
   const update = (idx, field, value) => {
     const next = members.map((m,i) => i===idx ? {...m,[field]:value} : m);
-    setMembers(next);
     onUpdate({ teamMembers:next, externalUsers:external }, "in-progress");
   };
 
@@ -95,29 +94,24 @@ export default function Sheet02Team({ data, locked, loginCodes, project, onUpdat
       loginCode:code, name:"", role:"", deliveryRole:"",
       availability:"80%", location:"", responsibilities:"",
     }];
-    setMembers(next);
     onUpdate({ teamMembers:next, externalUsers:external }, "in-progress");
-    // Note: App.jsx handleSheetUpdate("02") automatically syncs to l2.loginCodes
-    // when the PM enters a name — no separate __loginCode__ call needed.
+    // Note: App.jsx handleSheetUpdate("02") automatically syncs to l2.loginCodes.
   };
 
   const removeMember = (idx) => {
     if (idx === 0) return; // protect PM row
     const next = members.filter((_,i) => i !== idx);
-    setMembers(next);
     onUpdate({ teamMembers:next, externalUsers:external }, "in-progress");
   };
 
   // ── External user management ──────────────────────────────────────────────
   const addExternal = (type) => {
     const next = [...external, { id:`ext-${Date.now()}`, type, name:"", loginCode:"", generatedAt:"" }];
-    setExternal(next);
     onUpdate({ teamMembers:members, externalUsers:next }, "in-progress");
   };
 
   const updateExternal = (idx, field, value) => {
     const next = external.map((u,i) => i===idx ? {...u,[field]:value} : u);
-    setExternal(next);
     onUpdate({ teamMembers:members, externalUsers:next }, "in-progress");
   };
 
@@ -126,13 +120,11 @@ export default function Sheet02Team({ data, locked, loginCodes, project, onUpdat
     const code  = generateExternalCode(user.type);
     const today = new Date().toLocaleDateString("en-GB");
     const next  = external.map((u,i) => i===idx ? {...u,loginCode:code,generatedAt:today} : u);
-    setExternal(next);
     onUpdate({ teamMembers:members, externalUsers:next }, "in-progress");
   };
 
   const removeExternal = (idx) => {
     const next = external.filter((_,i) => i !== idx);
-    setExternal(next);
     onUpdate({ teamMembers:members, externalUsers:next }, "in-progress");
   };
 

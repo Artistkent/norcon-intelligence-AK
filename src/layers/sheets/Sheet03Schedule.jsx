@@ -66,25 +66,21 @@ function normaliseActivity(a) {
 }
 
 export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) {
-  const [activities, setActivities] = useState(() =>
-    (data.activities || []).map(normaliseActivity)
-  );
-  const [milestones, setMilestones] = useState(() =>
-    (data.milestones || []).map(normaliseActivity)
-  );
+  // Fully controlled — derived from props every render. No local copy that can
+  // go stale while background extraction/generation writes to the sheet.
+  const activities = (data.activities || []).map(normaliseActivity);
+  const milestones = (data.milestones || []).map(normaliseActivity);
 
   const teamRoles  = loginCodes.flatMap(lc => [lc.role, lc.deliveryRole].filter(Boolean));
   const roleOptions = [...new Set([...teamRoles, ...ALL_ROLES])];
 
   const updateActivity = (idx, field, value) => {
     const next = activities.map((a,i) => i===idx ? {...a,[field]:value} : a);
-    setActivities(next);
     onUpdate({ activities:next, milestones }, "in-progress");
   };
 
   const updateMilestone = (idx, field, value) => {
     const next = milestones.map((m,i) => i===idx ? {...m,[field]:value} : m);
-    setMilestones(next);
     onUpdate({ activities, milestones:next }, "in-progress");
   };
 
@@ -94,7 +90,6 @@ export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) 
       name:"", phase:"", responsible:"", description:"",
       _state:"pending", _complete:false,
     }];
-    setActivities(next);
     onUpdate({ activities:next, milestones }, "in-progress");
   };
 
@@ -104,12 +99,11 @@ export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) 
       name:"", phase:"", targetDate:"", description:"",
       _state:"pending", _complete:false,
     }];
-    setMilestones(next);
     onUpdate({ activities, milestones:next }, "in-progress");
   };
 
-  const removeActivity  = idx => { const next = activities.filter((_,i)=>i!==idx); setActivities(next); onUpdate({activities:next,milestones},"in-progress"); };
-  const removeMilestone = idx => { const next = milestones.filter((_,i)=>i!==idx); setMilestones(next); onUpdate({activities,milestones:next},"in-progress"); };
+  const removeActivity  = idx => { onUpdate({ activities: activities.filter((_,i)=>i!==idx), milestones }, "in-progress"); };
+  const removeMilestone = idx => { onUpdate({ activities, milestones: milestones.filter((_,i)=>i!==idx) }, "in-progress"); };
 
   const Section = ({title,count}) => (
     <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginBottom:12,marginTop:20,display:"flex",justifyContent:"space-between"}}>

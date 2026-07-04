@@ -191,6 +191,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
       proposedValue: ccrPending.newValue,
     };
     saveChanges([...changes, newCCR]);
+    dirtyRollbackRef.current = []; // change submitted — rollbacks consumed
     setCcrPending(null);
     setActiveTab("report");
   }, [ccrPending, changes, approvers, saveChanges]);
@@ -209,6 +210,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
       newValue: ccrPending.newValue,
     }];
     saveChanges(newChanges);
+    dirtyRollbackRef.current = []; // change kept as minor — rollbacks consumed
     setCcrPending(null);
   }, [ccrPending, changes, saveChanges]);
 
@@ -230,6 +232,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
       };
     });
     saveChanges(newChanges);
+    dirtyRollbackRef.current = []; // linked to existing CCR — rollbacks consumed
     setCcrPending(null);
   }, [ccrPending, changes, saveChanges]);
 
@@ -333,11 +336,26 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     saveChanges(newChanges);
     dirtyRef.current = false;
     dirtyDescRef.current = [];
+    dirtyRollbackRef.current = []; // changes kept + logged — rollbacks no longer valid
     setLeavePopup(null);
     if (toTab) setActiveTab(toTab);
   };
 
   const handleLeaveDiscard = () => {
+    // Discard = revert the actual field changes, not just skip logging them
+    dirtyRollbackRef.current.forEach(({ taskId, itemType, field, oldVal }) => {
+      onStateChange(prev => {
+        const key = itemType === "milestone" ? "milestones" : "activities";
+        const d03 = prev.l2.sheets["03"]?.data || {};
+        const next = (d03[key] || []).map(i =>
+          i._id === taskId ? { ...i, [field]: oldVal, _autoDate: false } : i
+        );
+        return { ...prev, l2: { ...prev.l2, sheets: { ...prev.l2.sheets,
+          "03": { ...prev.l2.sheets["03"], data: { ...d03, [key]: next } }
+        }}};
+      });
+    });
+    dirtyRollbackRef.current = [];
     dirtyRef.current = false;
     dirtyDescRef.current = [];
     const toTab = leavePopup?.toTab;

@@ -43,8 +43,11 @@ function autoDate(items) {
   });
   let cur = addDays(new Date(), 1);
   return sorted.map(item => {
-    const hasManualDate = item._autoDate === false && (item.startDate || item.targetDate);
-    if (hasManualDate) {
+    // Preserve dates on ANY item that has them, unless it was explicitly
+    // auto-dated before (_autoDate === true). Extracted/imported items have
+    // _autoDate undefined — their real dates must never be overwritten.
+    const hasRealDate = item._autoDate !== true && !!(parseDate(item.startDate) || parseDate(item.targetDate));
+    if (hasRealDate) {
       const end = parseDate(item.targetDate || item.startDate);
       if (end) {
         const after = addDays(end, 2);
@@ -61,7 +64,8 @@ function autoDate(items) {
 }
 
 function GanttSVG({ items, gStart, gEnd, phases, baselineItems }) {
-  const totalDays = Math.max(dBetween(gStart, gEnd), 60);
+  // Clamp to 5 years max — protects against any bad date exploding the SVG width
+  const totalDays = Math.min(Math.max(dBetween(gStart, gEnd), 60), 1825);
   const W         = totalDays * DAY_W;
   const HEADER_H  = 44;
   const PHASE_H   = 24;
@@ -281,6 +285,12 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
 
   const updateItemDate = useCallback((taskId, itemType, field, newVal) => {
     if (!newVal) return;
+    // Native date inputs fire onChange with partial years while typing
+    // (typing "2025" passes through year 0002 → chart range explodes to
+    // thousands of years → SVG width hits millions of px → everything
+    // vanishes from the visible viewport). Only accept plausible years.
+    const yr = parseInt(newVal.slice(0, 4));
+    if (isNaN(yr) || yr < 2000 || yr > 2100) return;
     const key = itemType === "milestone" ? "milestones" : "activities";
     saveSheet03({
       [key]: (sheets["03"]?.data?.[key] || []).map(i =>
