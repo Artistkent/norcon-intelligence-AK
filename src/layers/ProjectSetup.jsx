@@ -703,6 +703,7 @@ function EmptyNote() {
 }
 
 export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onLaunch, onLogout }) {
+  const [showLaunchConfirm, setShowLaunchConfirm] = useState(false);
   const { l2, project } = state;
   const tier    = state.projectTier;
   const tierCfg = tier ? TIERS[tier] : null;
@@ -1913,7 +1914,20 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
             style={{ padding:"6px 14px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Save Changes</button>
         )}
         {l3Unlocked && (
-          <button onClick={onLaunch} style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Launch Project →</button>
+          state.project?.status === "active"
+            ? (
+              <button onClick={onLaunch}
+                style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5,
+                  color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                ▶ Open Active Project
+              </button>
+            ) : (
+              <button onClick={() => setShowLaunchConfirm(true)}
+                style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5,
+                  color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                🚀 Launch Project →
+              </button>
+            )
         )}
       </div>
 
@@ -1925,6 +1939,41 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
         )}
       </div>
 
+
+      {showLaunchConfirm && (
+        <div onClick={() => setShowLaunchConfirm(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300,
+            display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:"#122E1E", border:"1px solid #1F4D34", borderRadius:12,
+              padding:28, maxWidth:400, width:"90%", boxShadow:"0 8px 40px #0009" }}>
+            <div style={{ fontSize:15, fontWeight:700, color:"#E5F0E8", marginBottom:10 }}>
+              🚀 Launch Project
+            </div>
+            <div style={{ fontSize:12, color:"#8aac96", lineHeight:1.7, marginBottom:22 }}>
+              Launching will lock your project baseline. Any future changes to scope, schedule,
+              or cost will require a <strong style={{ color:"#E5F0E8" }}>Change Control Request</strong>.
+              <br/><br/>
+              Continue?
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button
+                onClick={() => { setShowLaunchConfirm(false); onLaunch(); }}
+                style={{ flex:1, padding:"10px", background:"#2E7D52", border:"none",
+                  borderRadius:7, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                Yes, Launch
+              </button>
+              <button
+                onClick={() => setShowLaunchConfirm(false)}
+                style={{ flex:1, padding:"10px", background:"none",
+                  border:"1px solid #1F4D34", borderRadius:7,
+                  color:"#8aac96", fontSize:13, cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {savingPrompt && (
         <div onClick={discardAndNav} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200,
           display:"flex", alignItems:"center", justifyContent:"center" }}>
