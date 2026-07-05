@@ -11,6 +11,39 @@ const C = { bg:"#0D2B1B", surface:"#122E1E", border:"#1F4D34", accent:"#2E7D52",
 const SESSION_KEY    = "norcon_session_v1";
 const LAST_LOGIN_KEY = "norcon_last_login";
 
+function getSaveMemberCode(state, member) {
+  if (member?.loginCode) return member.loginCode;
+  const pm = state.l2?.loginCodes?.find(m => m.isPM || m.role === "Project Manager");
+  return pm?.loginCode || "";
+}
+
+function buildLaunchedState(state, loginCode) {
+  const alreadyActive = state.project?.status === "active";
+  if (alreadyActive && state.baseline && state.currentPlan) {
+    return { ...state, activeLayer:"L3" };
+  }
+
+  const snapshot = state.baseline?.snapshot || buildSnapshot(state.l2.sheets);
+  const today = new Date().toISOString().slice(0,10);
+  return {
+    ...state,
+    activeLayer:"L3",
+    project: { ...state.project, status:"active" },
+    baseline: state.baseline || {
+      version: 1,
+      confirmedDate: today,
+      confirmedBy: loginCode,
+      snapshot,
+    },
+    currentPlan: state.currentPlan || {
+      version: 1,
+      lastUpdated: today,
+      lastCCR: null,
+      snapshot,
+    },
+  };
+}
+
 export default function App() {
   const [screen,     setScreen]     = useState("landing");
   const [state,      setState]      = useState(INITIAL_STATE);
@@ -57,7 +90,7 @@ export default function App() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        await saveState(code, state);
+        await saveState(code, state, getSaveMemberCode(state, member));
         setSaveStatus("saved");
       } catch(e) {
         setSaveStatus("error");
@@ -66,7 +99,7 @@ export default function App() {
       if (saveStatusTimer.current) clearTimeout(saveStatusTimer.current);
       saveStatusTimer.current = setTimeout(() => setSaveStatus(null), 3000);
     }, 2000);
-  }, [state, screen, saveState]);
+  }, [state, member, screen, saveState]);
 
   // ── Auth ───────────────────────────────────────────────────────────────────
   const handleCreateNew = useCallback(() => {
@@ -295,6 +328,9 @@ export default function App() {
 
   const handleConfirmBaseline = useCallback((loginCode) => {
     setState(prev => {
+      if (prev.baseline && prev.currentPlan) {
+        return { ...prev, project: { ...prev.project, status:"active" } };
+      }
       const sheets   = prev.l2.sheets;
       const snapshot = buildSnapshot(sheets);
       const today    = new Date().toISOString().slice(0,10);
@@ -319,14 +355,21 @@ export default function App() {
     });
   }, []);
 
-  const handleLaunch = useCallback(() => {
+  const handleLaunch = useCallback(async () => {
     const code = state.project?.code;
+    const memberCode = getSaveMemberCode(state, member);
+    const nextState = buildLaunchedState(state, memberCode);
     if (code) {
-      fetch("/api/state", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ code, state }) });
+      try {
+        await saveState(code, nextState, memberCode);
+        setSaveStatus("saved");
+      } catch(e) {
+        setSaveStatus("error");
+        return;
+      }
     }
-    setState(prev => ({ ...prev, activeLayer:"L3" }));
-  }, [state]);
+    setState(nextState);
+  }, [state, member, saveState]);
 
   const handleLogout = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY);
@@ -350,6 +393,7 @@ export default function App() {
 
   const approvedCount = Object.values(state.l2.sheets).filter(s => s.locked).length;
   const l3Unlocked    = state.l2.loginCodes.length > 0;
+  const projectActive = state.project?.status === "active";
 
   return (
     <div style={{ background:C.bg, color:C.sage, height:"100vh", display:"flex", flexDirection:"column",
@@ -396,10 +440,10 @@ export default function App() {
                 <span style={{ fontSize:10, color:C.risk }}>⚠ Save failed — check connection</span>
               )}
               {l3Unlocked && (
-                <button onClick={handleGoToL3}
+                <button onClick={projectActive ? handleGoToL3 : handleLaunch}
                   style={{ padding:"5px 12px", fontSize:11, fontWeight:700, borderRadius:5,
                     border:"none", background:C.accent, color:"#fff", cursor:"pointer" }}>
-                  🚀 Launch Project →
+                  {projectActive ? "Open Active Project ->" : "Launch Project ->"}
                 </button>
               )}
               {state.projectTier && (

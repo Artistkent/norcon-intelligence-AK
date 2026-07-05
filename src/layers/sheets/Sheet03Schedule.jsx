@@ -65,7 +65,14 @@ function normaliseActivity(a) {
   };
 }
 
-export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) {
+function renumberSerial(items, prefix) {
+  return items.map((item, index) => ({
+    ...item,
+    _id: `${prefix}-${String(index + 1).padStart(3,"0")}`,
+  }));
+}
+
+export default function Sheet03Schedule({ data, locked, project, loginCodes, onUpdate }) {
   // Fully controlled — derived from props every render. No local copy that can
   // go stale while background extraction/generation writes to the sheet.
   const activities = (data.activities || []).map(normaliseActivity);
@@ -102,8 +109,14 @@ export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) 
     onUpdate({ activities, milestones:next }, "in-progress");
   };
 
-  const removeActivity  = idx => { onUpdate({ activities: activities.filter((_,i)=>i!==idx), milestones }, "in-progress"); };
-  const removeMilestone = idx => { onUpdate({ activities, milestones: milestones.filter((_,i)=>i!==idx) }, "in-progress"); };
+  const removeActivity  = idx => {
+    const next = activities.filter((_,i)=>i!==idx);
+    onUpdate({ activities: project?.status === "active" ? next : renumberSerial(next, "ACT"), milestones }, "in-progress");
+  };
+  const removeMilestone = idx => {
+    const next = milestones.filter((_,i)=>i!==idx);
+    onUpdate({ activities, milestones: project?.status === "active" ? next : renumberSerial(next, "MS") }, "in-progress");
+  };
 
   const Section = ({title,count}) => (
     <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginBottom:12,marginTop:20,display:"flex",justifyContent:"space-between"}}>

@@ -430,8 +430,17 @@ function AnimatedDots() {
 }
 
 // ── Review Extracted Data — optional modal, tables, edits save instantly ────
-function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
+function renumberSerial(items, prefix) {
+  return items.map((item, index) => ({
+    ...item,
+    _id: `${prefix}-${String(index + 1).padStart(3,"0")}`,
+  }));
+}
+
+function ReviewModal({ sheets, tier, project, intermediateDoc, onUpdate, onClose }) {
   const [reviewTab, setReviewTab] = useState(intermediateDoc ? "source" : "structured");
+  const [dirty, setDirty] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   const charter = sheets["01"]?.data?.charter || {};
   const team    = sheets["02"]?.data?.teamMembers || [];
   const acts         = sheets["03"]?.data?.activities || [];
@@ -447,6 +456,23 @@ function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
   const th = { padding:"7px 8px", textAlign:"left", fontWeight:700, fontSize:9, color:C.muted,
     textTransform:"uppercase", letterSpacing:".4px", borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
   const td = { borderBottom:`1px solid ${C.border}22` };
+  const isActiveProject = project?.status === "active";
+  const handleClose = () => {
+    if (dirty) {
+      setConfirmClose(true);
+      return;
+    }
+    onClose();
+  };
+  const saveAndClose = () => {
+    setDirty(false);
+    setConfirmClose(false);
+    onClose();
+  };
+  const reviewUpdate = (...args) => {
+    setDirty(true);
+    onUpdate(...args);
+  };
 
   const Section = ({ title, count, children }) => (
     <div style={{ marginBottom:24 }}>
@@ -458,40 +484,46 @@ function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
     </div>
   );
 
-  const updateCharterField = (key, value) => onUpdate("01", { charter:{...charter,[key]:value} }, "in-progress");
+  const updateCharterField = (key, value) => reviewUpdate("01", { charter:{...charter,[key]:value} }, "in-progress");
   const updateTeamField = (idx, field, value) => {
     const next = team.map((m,i)=>i===idx?{...m,[field]:value}:m);
-    onUpdate("02", { teamMembers: next }, "in-progress");
+    reviewUpdate("02", { teamMembers: next }, "in-progress");
   };
   const updateActField = (idx, field, value) => {
     const next = acts.map((a,i)=>i===idx?{...a,[field]:value}:a);
-    onUpdate("03", { activities: next, milestones: miles }, "in-progress");
+    reviewUpdate("03", { activities: next, milestones: miles }, "in-progress");
   };
-  const removeAct = (idx) => onUpdate("03", { activities: acts.filter((_,i)=>i!==idx), milestones: miles }, "in-progress");
+  const removeAct = (idx) => {
+    const next = acts.filter((_,i)=>i!==idx);
+    reviewUpdate("03", { activities: isActiveProject ? next : renumberSerial(next, "ACT"), milestones: miles }, "in-progress");
+  };
   const updateMileField = (idx, field, value) => {
     const next = miles.map((m,i)=>i===idx?{...m,[field]:value}:m);
-    onUpdate("03", { activities: acts, milestones: next }, "in-progress");
+    reviewUpdate("03", { activities: acts, milestones: next }, "in-progress");
   };
-  const removeMile = (idx) => onUpdate("03", { activities: acts, milestones: miles.filter((_,i)=>i!==idx) }, "in-progress");
+  const removeMile = (idx) => {
+    const next = miles.filter((_,i)=>i!==idx);
+    reviewUpdate("03", { activities: acts, milestones: isActiveProject ? next : renumberSerial(next, "MS") }, "in-progress");
+  };
   const updateRiskField = (idx, field, value) => {
     const next = risks.map((r,i)=>i===idx?{...r,[field]:value}:r);
-    onUpdate("05", { risks: next }, "in-progress");
+    reviewUpdate("05", { risks: next }, "in-progress");
   };
-  const removeRisk = (idx) => onUpdate("05", { risks: risks.filter((_,i)=>i!==idx) }, "in-progress");
+  const removeRisk = (idx) => reviewUpdate("05", { risks: risks.filter((_,i)=>i!==idx) }, "in-progress");
   const updateSHField = (idx, field, value) => {
     const next = stakeholders.map((s,i)=>i===idx?{...s,[field]:value}:s);
-    onUpdate("08", { stakeholders: next }, "in-progress");
+    reviewUpdate("08", { stakeholders: next }, "in-progress");
   };
-  const removeSH = (idx) => onUpdate("08", { stakeholders: stakeholders.filter((_,i)=>i!==idx) }, "in-progress");
+  const removeSH = (idx) => reviewUpdate("08", { stakeholders: stakeholders.filter((_,i)=>i!==idx) }, "in-progress");
   const updateBenField = (idx, field, value) => {
     const next = benefits.map((b,i)=>i===idx?{...b,[field]:value}:b);
     const currentCharter = sheets["01"]?.data?.charter || {};
-    onUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
+    reviewUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
   };
   const removeBen = (idx) => {
     const next = benefits.filter((_,i)=>i!==idx);
     const currentCharter = sheets["01"]?.data?.charter || {};
-    onUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
+    reviewUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
   };
 
   const overviewFields = [
@@ -502,11 +534,11 @@ function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
   ];
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:400,
+    <div onClick={handleClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:400,
       display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div onClick={e=>e.stopPropagation()} style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12,
         width:"100%", maxWidth:1000, maxHeight:"90vh", display:"flex", flexDirection:"column",
-        boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
+        boxShadow:"0 20px 60px rgba(0,0,0,0.6)", position:"relative" }}>
 
         <div style={{ padding:"18px 24px 0", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
@@ -514,8 +546,14 @@ function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
               <div style={{ fontSize:16, fontWeight:700, color:C.sage }}>Review Extracted Data</div>
               <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Edit directly — changes save instantly.</div>
             </div>
-            <button onClick={onClose} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
-              color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
+            <div style={{ display:"flex", gap:8 }}>
+              {dirty && (
+                <button onClick={saveAndClose} style={{ background:C.accent, border:"none", borderRadius:6,
+                  color:"#fff", padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>Save Changes</button>
+              )}
+              <button onClick={handleClose} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+                color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
+            </div>
           </div>
           {/* Tab bar */}
           {[
@@ -694,6 +732,20 @@ function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
           )}
           </>)}
         </div>
+        {confirmClose && (
+          <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:12 }}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:22, width:340, boxShadow:"0 12px 36px #0008" }}>
+              <div style={{ fontSize:14, fontWeight:700, color:C.sage, marginBottom:6 }}>Save review edits?</div>
+              <div style={{ fontSize:12, color:C.muted, lineHeight:1.5, marginBottom:16 }}>
+                You changed data in Review Data. Save those edits before closing this view.
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <button onClick={saveAndClose} style={{ padding:"9px 14px", background:C.accent, border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Save & Close</button>
+                <button onClick={()=>setConfirmClose(false)} style={{ padding:"9px 14px", background:"none", border:`1px solid ${C.border}`, borderRadius:6, color:C.dim, fontSize:12, cursor:"pointer" }}>Keep Editing</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -707,6 +759,8 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
   const tier    = state.projectTier;
   const tierCfg = tier ? TIERS[tier] : null;
   const sheets  = l2?.sheets || {};
+  const isProjectActive = project?.status === "active";
+  const openProjectLabel = isProjectActive ? "Open Active Project ->" : "Launch Project ->";
 
   const isExisting = Object.values(sheets).some(s => s.status !== "empty") || (l2?.loginCodes||[]).length > 0;
   const pmAlreadySet = (l2?.loginCodes||[]).some(m => m.isPM || m.role === "Project Manager");
@@ -1583,7 +1637,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
               {(l2?.loginCodes||[]).length > 0 && (
                 <button onClick={onLaunch}
                   style={{ padding:"5px 12px", background:C.accent, border:"none", borderRadius:5,
-                    color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>🚀 Launch Project →</button>
+                    color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>{openProjectLabel}</button>
               )}
               {onLogout && (
                 <button onClick={onLogout}
@@ -1827,7 +1881,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
         <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
 
         {showReview && (
-          <ReviewModal sheets={sheets} tier={tier} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
+          <ReviewModal sheets={sheets} tier={tier} project={project} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
         )}
       </div>
     );
@@ -1902,7 +1956,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
             style={{ padding:"6px 14px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Save Changes</button>
         )}
         {l3Unlocked && (
-          <button onClick={onLaunch} style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Launch Project →</button>
+          <button onClick={onLaunch} style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>{openProjectLabel}</button>
         )}
       </div>
 
@@ -1932,7 +1986,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
       )}
 
       {showReview && (
-        <ReviewModal sheets={sheets} tier={tier} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
+        <ReviewModal sheets={sheets} tier={tier} project={project} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
       )}
     </div>
   );

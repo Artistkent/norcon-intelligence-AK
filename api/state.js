@@ -22,6 +22,20 @@ async function redis(command) {
   return data[0]?.result;
 }
 
+function normaliseCode(value) {
+  return String(value || '').toUpperCase().trim();
+}
+
+function findMember(state, memberCode) {
+  const code = normaliseCode(memberCode);
+  if (!code) return null;
+  return (state?.l2?.loginCodes || []).find(lc => normaliseCode(lc.loginCode) === code) || null;
+}
+
+function canWriteProject(member) {
+  return !!member && (member.isPM || member.role === 'Project Manager');
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -40,10 +54,24 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { code, state } = req.body || {};
+      const { code, state, memberCode } = req.body || {};
       if (!code || !state) return res.status(400).json({ error: 'code and state required' });
+      if (!memberCode) return res.status(401).json({ error: 'memberCode required to save project state' });
 
       const key = `project:${code.toUpperCase().trim()}`;
+      const existingRaw = await redis(['GET', key]);
+      if (existingRaw) {
+        const member = findMember(JSON.parse(existingRaw), memberCode);
+        if (!member) {
+          return res.status(403).json({ error: 'Valid team member code required to save project state' });
+        }
+      } else {
+        const member = findMember(state, memberCode);
+        if (!canWriteProject(member)) {
+          return res.status(403).json({ error: 'Initial save requires a Project Manager login code in the project state' });
+        }
+      }
+
       await redis(['SET', key, JSON.stringify(state)]);
       return res.status(200).json({ ok: true });
     }

@@ -262,8 +262,8 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
         issues: prev.l2.sheets["05"]?.data?.issues || [],
       },
     }));
-    onConfirmBaseline?.();
-  }, [onConfirmBaseline, onStateChange]);
+    onConfirmBaseline?.(loginCode);
+  }, [loginCode, onConfirmBaseline, onStateChange]);
 
   const handleSustainRecord = useCallback((records) => {
     const arr   = Array.isArray(records) ? records : [records];

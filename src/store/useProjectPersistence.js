@@ -1,26 +1,21 @@
 // Hook to auto-save project state to Redis and load on login
-import { useCallback, useRef } from 'react';
-
-const SAVE_DEBOUNCE_MS = 2000; // save 2 seconds after last change
+import { useCallback } from 'react';
 
 export function useProjectPersistence() {
-  const saveTimer = useRef(null);
-
-  // Save project state to Redis (debounced)
-  const saveState = useCallback((projectCode, state) => {
+  // Save project state to Redis. App.jsx handles debouncing so callers can await
+  // this function and show accurate save status.
+  const saveState = useCallback(async (projectCode, state, memberCode) => {
     if (!projectCode) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      try {
-        await fetch('/api/state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: projectCode, state }),
-        });
-      } catch (err) {
-        console.error('Failed to save project state:', err.message);
-      }
-    }, SAVE_DEBOUNCE_MS);
+    const res = await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: projectCode, state, memberCode }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save project state');
+    }
+    return res.json();
   }, []);
 
   // Load project state by code
