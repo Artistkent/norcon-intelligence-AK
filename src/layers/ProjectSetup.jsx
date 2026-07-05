@@ -544,7 +544,7 @@ function ReviewModal({ sheets, tier, project, intermediateDoc, onUpdate, onClose
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:C.sage }}>Review Extracted Data</div>
-              <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Edit directly — changes save instantly.</div>
+              <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Edit directly, then save before closing.</div>
             </div>
             <div style={{ display:"flex", gap:8 }}>
               {dirty && (
@@ -754,6 +754,29 @@ function EmptyNote() {
   return <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", padding:"8px 0" }}>Nothing here yet.</div>;
 }
 
+function LaunchConfirmModal({ onConfirm, onCancel }) {
+  return (
+    <div onClick={onCancel} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.68)", zIndex:700,
+      display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`,
+        borderRadius:10, padding:"20px 22px", width:"100%", maxWidth:430, boxShadow:"0 14px 40px rgba(0,0,0,.35)" }}>
+        <div style={{ fontSize:15, fontWeight:800, color:C.sage, marginBottom:8 }}>Launch Project</div>
+        <div style={{ fontSize:12, color:C.dim, lineHeight:1.6, marginBottom:18 }}>
+          Launching will lock your project baseline. Any future changes to scope, schedule, or cost will require a Change Control Request. Continue?
+        </div>
+        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+          <button onClick={onCancel}
+            style={{ padding:"8px 14px", background:"none", border:`1px solid ${C.border}`, borderRadius:5,
+              color:C.muted, fontSize:12, cursor:"pointer" }}>Cancel</button>
+          <button onClick={onConfirm}
+            style={{ padding:"8px 16px", background:C.accent, border:"none", borderRadius:5,
+              color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Yes, Launch</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onLaunch, onLogout }) {
   const { l2, project } = state;
   const tier    = state.projectTier;
@@ -761,6 +784,15 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
   const sheets  = l2?.sheets || {};
   const isProjectActive = project?.status === "active";
   const openProjectLabel = isProjectActive ? "Open Active Project ->" : "Launch Project ->";
+  const [showLaunchConfirm, setShowLaunchConfirm] = useState(false);
+  const requestLaunch = () => {
+    if (isProjectActive) onLaunch?.();
+    else setShowLaunchConfirm(true);
+  };
+  const confirmLaunch = () => {
+    setShowLaunchConfirm(false);
+    onLaunch?.();
+  };
 
   const isExisting = Object.values(sheets).some(s => s.status !== "empty") || (l2?.loginCodes||[]).length > 0;
   const pmAlreadySet = (l2?.loginCodes||[]).some(m => m.isPM || m.role === "Project Manager");
@@ -1635,7 +1667,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
                 style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.accentL}55`, borderRadius:5,
                   color:C.accentL, fontSize:10, fontWeight:600, cursor:"pointer" }}>📋 Review Data</button>
               {(l2?.loginCodes||[]).length > 0 && (
-                <button onClick={onLaunch}
+                <button onClick={requestLaunch}
                   style={{ padding:"5px 12px", background:C.accent, border:"none", borderRadius:5,
                     color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>{openProjectLabel}</button>
               )}
@@ -1883,6 +1915,9 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
         {showReview && (
           <ReviewModal sheets={sheets} tier={tier} project={project} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
         )}
+        {showLaunchConfirm && (
+          <LaunchConfirmModal onConfirm={confirmLaunch} onCancel={()=>setShowLaunchConfirm(false)}/>
+        )}
       </div>
     );
   }
@@ -1956,7 +1991,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
             style={{ padding:"6px 14px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Save Changes</button>
         )}
         {l3Unlocked && (
-          <button onClick={onLaunch} style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>{openProjectLabel}</button>
+          <button onClick={requestLaunch} style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>{openProjectLabel}</button>
         )}
       </div>
 
@@ -1987,6 +2022,9 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
 
       {showReview && (
         <ReviewModal sheets={sheets} tier={tier} project={project} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
+      )}
+      {showLaunchConfirm && (
+        <LaunchConfirmModal onConfirm={confirmLaunch} onCancel={()=>setShowLaunchConfirm(false)}/>
       )}
     </div>
   );

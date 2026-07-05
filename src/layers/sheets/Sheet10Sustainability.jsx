@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const C = { surface:"#122E1E", surface2:"#183D28", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2" };
 
@@ -32,6 +32,12 @@ export default function Sheet10Sustainability({ data, locked, onUpdate }) {
   const [enabled,   setEnabled]   = useState(data.enabled   || {});
   const [selected,  setSelected]  = useState(data.selected  || {});
   const [actLinks,  setActLinks]  = useState(data.actLinks  || {});
+
+  useEffect(() => {
+    setEnabled(data.enabled || {});
+    setSelected(data.selected || {});
+    setActLinks(data.actLinks || {});
+  }, [data.enabled, data.selected, data.actLinks]);
 
   const toggleDimension = (id) => {
     if (locked) return;

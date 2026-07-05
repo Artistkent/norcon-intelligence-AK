@@ -43,11 +43,9 @@ function autoDate(items) {
   });
   let cur = addDays(new Date(), 1);
   return sorted.map(item => {
-    // Preserve dates on ANY item that has them, unless it was explicitly
-    // auto-dated before (_autoDate === true). Extracted/imported items have
-    // _autoDate undefined — their real dates must never be overwritten.
-    const hasRealDate = item._autoDate !== true && !!(parseDate(item.startDate) || parseDate(item.targetDate));
-    if (hasRealDate) {
+    // Preserve dates on ANY item that has them. Auto-dating only fills blanks.
+    const hasDate = !!(parseDate(item.startDate) || parseDate(item.targetDate));
+    if (hasDate) {
       const end = parseDate(item.targetDate || item.startDate);
       if (end) {
         const after = addDays(end, 2);

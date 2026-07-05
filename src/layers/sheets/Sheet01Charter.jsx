@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const C = { bg:"#0D2B1B", surface:"#122E1E", surface2:"#183D28", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c", milestone:"#e0a23a" };
 const inp = { width:"100%", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6, color:C.sage, fontSize:13, padding:"9px 12px", outline:"none", boxSizing:"border-box", fontFamily:"inherit" };
@@ -12,8 +12,15 @@ const Section = ({ title, sub }) => (
 
 const BENEFIT_CATEGORIES = ["Strategic","Operational","Financial","Stakeholder","Community","Environmental","Knowledge","Capability","Reputational","Social"];
 
-function makeBenId(arr) { return `BEN-${String(arr.length + 1).padStart(3,"0")}`; }
-function makeObjId(arr) { return `OBJ-${String(arr.length + 1).padStart(3,"0")}`; }
+function nextNumberedId(arr, prefix) {
+  const max = (arr || []).reduce((highest, item) => {
+    const n = parseInt(String(item?._id || "").replace(`${prefix}-`, ""), 10);
+    return Number.isFinite(n) ? Math.max(highest, n) : highest;
+  }, 0);
+  return `${prefix}-${String(max + 1).padStart(3,"0")}`;
+}
+function makeBenId(arr) { return nextNumberedId(arr, "BEN"); }
+function makeObjId(arr) { return nextNumberedId(arr, "OBJ"); }
 function blankBenefit(arr) {
   return { _id: makeBenId(arr), name:"", description:"", category:"Strategic", owner:"", targetDate:"", objectives:[] };
 }
@@ -46,28 +53,34 @@ function safeBenefit(b, idx) {
 
 export default function Sheet01Charter({ data, locked, onUpdate }) {
   const c = data.charter || {};
-
-  const [form, setForm] = useState({
-    projectName:        c.projectName        || "",
-    projectCode:        c.projectCode        || "",
-    projectManager:     c.projectManager     || "",
-    projectSponsor:     c.projectSponsor     || "",
-    organisation:       c.organisation       || "",
-    startDate:          c.startDate          || "",
-    endDate:            c.endDate            || "",
-    budget:             c.budget             || "",
-    purpose:            c.purpose            || "",
-    problemStatement:   c.problemStatement   || "",
-    strategicAlignment: c.strategicAlignment || "",
-    withinScope:        (c.withinScope  || []).join("\n"),
-    outOfScope:         (c.outOfScope   || []).join("\n"),
+  const buildForm = (charter) => ({
+    projectName:        charter.projectName        || "",
+    projectCode:        charter.projectCode        || "",
+    projectManager:     charter.projectManager     || "",
+    projectSponsor:     charter.projectSponsor     || "",
+    organisation:       charter.organisation       || "",
+    startDate:          charter.startDate          || "",
+    endDate:            charter.endDate            || "",
+    budget:             charter.budget             || "",
+    purpose:            charter.purpose            || "",
+    problemStatement:   charter.problemStatement   || "",
+    strategicAlignment: charter.strategicAlignment || "",
+    withinScope:        (charter.withinScope  || []).join("\n"),
+    outOfScope:         (charter.outOfScope   || []).join("\n"),
   });
+
+  const [form, setForm] = useState(() => buildForm(c));
 
   // Benefits (with nested objectives) — migrate old flat objectives if benefits not yet defined
   const [benefits, setBenefits] = useState(() => {
     if (c.benefits && c.benefits.length > 0) return c.benefits.map(safeBenefit);
     return [];
   });
+
+  useEffect(() => {
+    setForm(buildForm(c));
+    setBenefits(c.benefits && c.benefits.length > 0 ? c.benefits.map(safeBenefit) : []);
+  }, [data.charter]);
 
   // ── Persist helpers ────────────────────────────────────────────────────────
   const persist = (nextForm, nextBenefits) => {

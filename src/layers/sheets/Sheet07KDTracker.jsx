@@ -1,16 +1,34 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const C = { surface:"#122E1E", surface2:"#183D28", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2" };
 const inp = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:5, color:C.sage, fontSize:12, padding:"6px 9px", outline:"none", boxSizing:"border-box", fontFamily:"inherit", width:"100%" };
 const Lbl = ({ c }) => <div style={{ fontSize:9, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".4px", marginBottom:3 }}>{c}</div>;
 
-function makeDelId(arr) { return `D-${String(arr.length + 1).padStart(3,"0")}`; }
-function makeKpiId(delId, arr) { return `${delId}-KPI${String(arr.length + 1).padStart(2,"0")}`; }
+function nextNumberedId(arr, prefix, width = 3) {
+  const max = (arr || []).reduce((highest, item) => {
+    const n = parseInt(String(item?._id || "").replace(prefix, ""), 10);
+    return Number.isFinite(n) ? Math.max(highest, n) : highest;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(width,"0")}`;
+}
+function makeDelId(arr) { return nextNumberedId(arr, "D-"); }
+function makeKpiId(delId, arr) { return nextNumberedId(arr, `${delId}-KPI`, 2); }
 function blankKpi(delId, arr) {
   return { _id: makeKpiId(delId, arr), name:"", baseline:"", target:"", unit:"", measurementFrequency:"Monthly", dataSource:"", owner:"" };
 }
 function blankDeliverable(arr) {
   return { _id: makeDelId(arr), name:"", linkedObjectiveId:"", notes:"", deadlineV1:"", kpis:[] };
+}
+function normaliseDeliverables(deliverables = []) {
+  return deliverables.map(d => ({
+    ...d,
+    kpis: d.kpis && d.kpis.length > 0
+      ? d.kpis
+      : d.kpi
+        ? [{ _id: `${d._id}-KPI01`, name: d.kpi, baseline:"", target:d.target||"", unit:"", measurementFrequency:"Monthly", dataSource:"", owner:"" }]
+        : [],
+    linkedObjectiveId: d.linkedObjectiveId || "",
+  }));
 }
 
 // Flatten benefits → objectives into a lookup for the dropdown
@@ -44,6 +62,10 @@ export default function Sheet07KDTracker({ data, locked, allSheets, onUpdate }) 
     }
     return [];
   });
+
+  useEffect(() => {
+    setDeliverables(normaliseDeliverables(data.deliverables || []));
+  }, [data.deliverables]);
 
   const persist = (next) => {
     setDeliverables(next);

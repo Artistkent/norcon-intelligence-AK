@@ -8,6 +8,7 @@ export function useProjectPersistence() {
     if (!projectCode) return;
     const res = await fetch('/api/state', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: projectCode, state, memberCode }),
     });
@@ -20,7 +21,9 @@ export function useProjectPersistence() {
 
   // Load project state by code
   const loadState = useCallback(async (projectCode) => {
-    const res = await fetch(`/api/state?code=${projectCode.toUpperCase()}`);
+    const res = await fetch(`/api/state?code=${projectCode.toUpperCase()}`, {
+      credentials: 'same-origin',
+    });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to load project');
@@ -33,6 +36,7 @@ export function useProjectPersistence() {
   const authenticate = useCallback(async (projectCode, memberCode) => {
     const res = await fetch('/api/auth', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectCode, memberCode }),
     });
