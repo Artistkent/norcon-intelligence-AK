@@ -289,8 +289,19 @@ export default function App() {
     setState(prev => ({ ...prev, activeLayer:"setup" }));
   }, []);
 
-  const handleGoToL3 = useCallback(() => {
-    setState(prev => ({ ...prev, activeLayer:"L3" }));
+  const handleGoToL3 = useCallback((tab) => {
+    setState(prev => ({
+      ...prev,
+      activeLayer: "L3",
+      project: { ...prev.project, lastActiveTab: tab || prev.project?.lastActiveTab || "dashboard" },
+    }));
+  }, []);
+
+  const handleTabChange = useCallback((tab) => {
+    setState(prev => ({
+      ...prev,
+      project: { ...prev.project, lastActiveTab: tab },
+    }));
   }, []);
 
   const handleConfirmBaseline = useCallback((loginCode) => {
@@ -320,13 +331,36 @@ export default function App() {
   }, []);
 
   const handleLaunch = useCallback(() => {
-    const code = state.project?.code;
-    if (code) {
-      fetch("/api/state", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ code, state }) });
-    }
-    setState(prev => ({ ...prev, activeLayer:"L3" }));
-  }, [state]);
+    // Perform launch: set status active, write baseline (once only), navigate to L3
+    setState(prev => {
+      if (prev.baseline) {
+        // Baseline already exists — just navigate (re-launch after return to L2)
+        return { ...prev, activeLayer: "L3" };
+      }
+      const sheets   = prev.l2.sheets;
+      const snapshot = buildSnapshot(sheets);
+      const today    = new Date().toISOString().slice(0,10);
+      const pmCode   = (prev.l2.loginCodes||[]).find(m => m.isPM)?.loginCode || "PM";
+      const nextState = {
+        ...prev,
+        activeLayer: "L3",
+        project: {
+          ...prev.project,
+          status: "active",
+          lastActiveTab: prev.project?.lastActiveTab || "dashboard",
+        },
+        baseline:    { version:1, confirmedDate:today, confirmedBy:pmCode, snapshot },
+        currentPlan: { version:1, lastUpdated:today, lastCCR:null, snapshot },
+      };
+      // Persist immediately after baseline is set
+      const code = prev.project?.code;
+      if (code) {
+        fetch("/api/state", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ code, state: nextState }) });
+      }
+      return nextState;
+    });
+  }, []);
 
   const handleLogout = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY);
@@ -367,7 +401,9 @@ export default function App() {
           baseline={state.baseline}
           currentPlan={state.currentPlan}
           onConfirmBaseline={handleConfirmBaseline}
-          onApplyCCRToPlan={handleApplyCCRToPlan}/>
+          onApplyCCRToPlan={handleApplyCCRToPlan}
+          onTabChange={handleTabChange}
+          initialTab={state.project?.lastActiveTab || "dashboard"}/>
       )}
 
       {/* ── Project Setup ── */}
@@ -395,11 +431,11 @@ export default function App() {
               {saveStatus === "error" && (
                 <span style={{ fontSize:10, color:C.risk }}>⚠ Save failed — check connection</span>
               )}
-              {l3Unlocked && (
-                <button onClick={handleGoToL3}
+              {l3Unlocked && state.project?.status === "active" && (
+                <button onClick={() => handleGoToL3(state.project?.lastActiveTab)}
                   style={{ padding:"5px 12px", fontSize:11, fontWeight:700, borderRadius:5,
                     border:"none", background:C.accent, color:"#fff", cursor:"pointer" }}>
-                  🚀 Launch Project →
+                  ▶ Open Active Project
                 </button>
               )}
               {state.projectTier && (
