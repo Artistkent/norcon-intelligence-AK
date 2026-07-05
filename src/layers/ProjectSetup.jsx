@@ -856,7 +856,16 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
 
     const sourceList = sources.join(", ");
 
+    const today = new Date().toISOString().slice(0,10);
+    const tierGuidance = tier === "light"
+      ? "This is a LIGHT-tier project (simple/lean). Do NOT include stakeholder-register activities, change-control activities, or formal governance-board activities in the schedule — keep activities focused on direct delivery. A brief stakeholder mention in prose is fine, but no dedicated register-population or change-control tasks."
+      : "This is a FULL-tier project — include stakeholder management and change control where appropriate.";
+
     const stage1Prompt = `You are a senior project manager. Based on the input below, produce a comprehensive, well-structured project document suitable for setting up a full project management platform.
+
+TODAY'S DATE: ${today}. All generated dates MUST be on or after today unless the input explicitly states otherwise. Anchor the schedule to start from today (or the input's stated start date if later) and work toward any stated deadline.
+
+TIER: ${tierGuidance}
 
 SOURCES: ${sourceList}
 
@@ -1070,7 +1079,10 @@ Return ONLY JSON, no markdown, no preamble:
     if (existingActs.length === 0) {
       setAiStatus("Generating project schedule…");
       try {
+        const today = new Date().toISOString().slice(0,10);
         const prompt = `You are an expert PM. Based on this project context, generate a realistic schedule of 6-10 activities across APM lifecycle phases (Concept, Definition, Development, Handover & Closeout).
+TODAY'S DATE: ${today}. All dates must be on or after today.
+${tier === "light" ? "LIGHT-tier project: no stakeholder-register or change-control activities — direct delivery tasks only." : ""}
 
 ${contextStr}
 
@@ -1580,11 +1592,6 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
               <button onClick={()=>setShowReview(true)}
                 style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.accentL}55`, borderRadius:5,
                   color:C.accentL, fontSize:10, fontWeight:600, cursor:"pointer" }}>📋 Review Data</button>
-              {(l2?.loginCodes||[]).length > 0 && (
-                <button onClick={onLaunch}
-                  style={{ padding:"5px 12px", background:C.accent, border:"none", borderRadius:5,
-                    color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>🚀 Launch Project →</button>
-              )}
               {onLogout && (
                 <button onClick={onLogout}
                   style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.border}`, borderRadius:5,
@@ -1614,11 +1621,13 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
           </div>
 
           <div style={{ position:"relative", flex:1, height:"100%", display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
-            <div style={{ maxWidth:540, width:"100%", background:C.surface, border:`1px solid ${C.border}`,
-              borderRadius:12, padding:"28px 32px", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
+            <div style={{ maxWidth:540, width:"100%", maxHeight:"100%", background:C.surface, border:`1px solid ${C.border}`,
+              borderRadius:12, padding:"28px 32px", boxShadow:"0 12px 40px rgba(0,0,0,0.5)",
+              display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-              <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:18 }}>{currentCluster.title}</div>
+              <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:18, flexShrink:0 }}>{currentCluster.title}</div>
 
+              <div style={{ flex:1, minHeight:0, overflowY:"auto", marginBottom:4 }}>
               {currentCluster.fields.map(field => {
                 if (field.optional && isFieldKnown(field.key)) return null;
 
@@ -1810,7 +1819,9 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
                 );
               })}
 
-              <div style={{ display:"flex", gap:10, marginTop:8 }}>
+              </div>
+
+              <div style={{ display:"flex", gap:10, marginTop:10, flexShrink:0 }}>
                 <button onClick={goBackWizard}
                   style={{ padding:"10px 16px", background:"none", border:`1px solid ${C.border}`,
                     borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>← Back</button>
