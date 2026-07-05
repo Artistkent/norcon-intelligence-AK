@@ -84,10 +84,18 @@ export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) 
     onUpdate({ activities, milestones:next }, "in-progress");
   };
 
+  // costData lives at data.costData[actId].plannedAmount — same path L3 reads
+  const updateCost = (actId, value) => {
+    const prev = data.costData || {};
+    const next = { ...prev, [actId]: { ...(prev[actId] || {}), plannedAmount: value } };
+    onUpdate({ activities, milestones, costData: next }, "in-progress");
+  };
+
   const addActivity = () => {
     const next = [...activities, {
       _id: `ACT-${String(activities.length+1).padStart(3,"0")}`,
       name:"", phase:"", responsible:"", description:"",
+      startDate:"", targetDate:"",
       _state:"pending", _complete:false,
     }];
     onUpdate({ activities:next, milestones }, "in-progress");
@@ -143,6 +151,11 @@ export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) 
             <div><Lbl c="Responsible"/><EditableSelect value={a.responsible} disabled={locked} onChange={v=>updateActivity(i,"responsible",v)} options={roleOptions} placeholder="Select role..."/></div>
             {!locked && <button onClick={()=>removeActivity(i)} style={{background:"none",border:"none",color:C.risk,cursor:"pointer",fontSize:16,paddingBottom:2,alignSelf:"end"}}>✕</button>}
           </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:6}}>
+            <div><Lbl c="Start Date"/><input style={inp} type="date" value={a.startDate||""} disabled={locked} onChange={e=>updateActivity(i,"startDate",e.target.value)}/></div>
+            <div><Lbl c="End Date"/><input style={inp} type="date" value={a.targetDate||""} disabled={locked} onChange={e=>updateActivity(i,"targetDate",e.target.value)}/></div>
+            <div><Lbl c="Planned Cost (£)"/><input style={{...inp,textAlign:"right"}} type="number" min="0" step="0.01" value={(data.costData||{})[a._id]?.plannedAmount||""} disabled={locked} onChange={e=>updateCost(a._id,e.target.value)} placeholder="0.00"/></div>
+          </div>
           <div style={{marginTop:8}}>
             <Lbl c="Description (optional)"/>
             <EditableField value={a.description} disabled={locked} onChange={v=>updateActivity(i,"description",v)} placeholder="Additional detail..."/>
@@ -160,11 +173,12 @@ export default function Sheet03Schedule({ data, locked, loginCodes, onUpdate }) 
 
       {milestones.map((m,i) => (
         <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`3px solid ${C.milestone}`,borderRadius:7,padding:"10px 12px",marginBottom:8}}>
-          <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr 160px auto",gap:8,alignItems:"end"}}>
+          <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr 160px 130px auto",gap:8,alignItems:"end"}}>
             <div><Lbl c="ID"/><EditableField value={m._id} disabled={locked} onChange={v=>updateMilestone(i,"_id",v)} placeholder="MS-001"/></div>
             <div><Lbl c="Milestone Name"/><EditableField value={m.name} disabled={locked} onChange={v=>updateMilestone(i,"name",v)} placeholder="Milestone name"/></div>
             <div><Lbl c="APM Phase"/><EditableSelect value={m.phase} disabled={locked} onChange={v=>updateMilestone(i,"phase",v)} options={APM_PHASES} placeholder="Select phase..."/></div>
             <div><Lbl c="Target Date"/><input style={inp} type="date" value={m.targetDate||""} disabled={locked} onChange={e=>updateMilestone(i,"targetDate",e.target.value)}/></div>
+            <div><Lbl c="Planned Cost (£)"/><input style={{...inp,textAlign:"right"}} type="number" min="0" step="0.01" value={(data.costData||{})[m._id]?.plannedAmount||""} disabled={locked} onChange={e=>updateCost(m._id,e.target.value)} placeholder="0.00"/></div>
             {!locked && <button onClick={()=>removeMilestone(i)} style={{background:"none",border:"none",color:C.risk,cursor:"pointer",fontSize:16,paddingBottom:2,alignSelf:"end"}}>✕</button>}
           </div>
           <div style={{marginTop:8}}>
