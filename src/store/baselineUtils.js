@@ -5,6 +5,7 @@ export function buildSnapshot(sheets) {
   const charter      = sheets["01"]?.data?.charter    || {};
   const activities   = sheets["03"]?.data?.activities || [];
   const milestones   = sheets["03"]?.data?.milestones || [];
+  const costData     = sheets["03"]?.data?.costData   || {};
   const risks        = sheets["05"]?.data?.risks      || [];
   const deliverables = sheets["07"]?.data?.deliverables || [];
 
@@ -12,6 +13,7 @@ export function buildSnapshot(sheets) {
     charter:      JSON.parse(JSON.stringify(charter)),
     activities:   JSON.parse(JSON.stringify(activities)),
     milestones:   JSON.parse(JSON.stringify(milestones)),
+    costData:     JSON.parse(JSON.stringify(costData)),
     risks:        JSON.parse(JSON.stringify(risks)),
     deliverables: JSON.parse(JSON.stringify(deliverables)),
     // charter.benefits captured inside charter above; also explicit for direct access
