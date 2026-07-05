@@ -68,8 +68,8 @@ function LeavePopup({ onLogCCR, onMinor, onDiscard, onCancel, tabLabel }) {
   );
 }
 
-export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete, onStateChange, onLogout, baseline, currentPlan, onConfirmBaseline, onApplyCCRToPlan }) {
-  const [activeTab,    setActiveTab]    = useState("home");
+export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete, onStateChange, onLogout, baseline, currentPlan, onConfirmBaseline, onApplyCCRToPlan, onTabChange, initialTab }) {
+  const [activeTab,    setActiveTab]    = useState(initialTab || "home");
   const [ccrPending,   setCcrPending]   = useState(null);
   const [notification,  setNotification]  = useState(null);
   const [sustainPrompt, setSustainPrompt] = useState(null);
@@ -292,6 +292,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     dirtyRef.current = false;
     dirtyDescRef.current = [];
     setLeavePopup(null);
+    if (onTabChange) onTabChange(toTab);
     setActiveTab(toTab);
   };
 
