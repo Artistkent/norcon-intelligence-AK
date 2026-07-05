@@ -159,6 +159,16 @@ export default function App() {
       return;
     }
 
+    // Special key "__intermediateDoc__" — persists the Stage 1 synthesised
+    // project document so it survives remounts and is saved to Redis.
+    if (sheetId === "__intermediateDoc__") {
+      setState(prev => ({
+        ...prev,
+        l2: { ...prev.l2, intermediateDoc: tierOverride || "" },
+      }));
+      return;
+    }
+
     // ── Normal sheet update ───────────────────────────────────────────────────
     setState(prev => {
       const prevSheet = prev.l2.sheets[sheetId] || { data:{}, locked:false, status:"empty" };

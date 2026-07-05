@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { generateLoginCode } from "../../store/appStore.js";
+import { generateLoginCode, generateExternalCode } from "../../store/appStore.js";
 
 const C = { surface:"#122E1E", surface2:"#183D28", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c", milestone:"#e0a23a" };
 const inp = { width:"100%", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:5, color:C.sage, fontSize:12, padding:"7px 10px", outline:"none", boxSizing:"border-box", fontFamily:"inherit" };
@@ -59,11 +59,6 @@ const EXTERNAL_TYPES = [
   { value:"observer", label:"Observer", color:C.muted,     desc:"Read-only access to summary view." },
 ];
 
-function generateExternalCode(type) {
-  const prefix = { sponsor:"SP", guest:"GU", observer:"OB" }[type] || "EX";
-  return `${prefix}-${String(Math.floor(Math.random()*9000)+1000)}`;
-}
-
 export default function Sheet02Team({ data, locked, loginCodes, project, onUpdate }) {
   // Fully controlled — derived from props every render. No stale local copy:
   // background extraction or wizard writes to teamMembers are always reflected,
@@ -117,7 +112,11 @@ export default function Sheet02Team({ data, locked, loginCodes, project, onUpdat
 
   const generateExCode = (idx) => {
     const user  = external[idx];
-    const code  = generateExternalCode(user.type);
+    const allCodes = [
+      ...members.map(m => m.loginCode),
+      ...external.map(u => u.loginCode),
+    ].filter(Boolean);
+    const code  = generateExternalCode(user.type, allCodes);
     const today = new Date().toLocaleDateString("en-GB");
     const next  = external.map((u,i) => i===idx ? {...u,loginCode:code,generatedAt:today} : u);
     onUpdate({ teamMembers:members, externalUsers:next }, "in-progress");

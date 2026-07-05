@@ -61,6 +61,10 @@ export const INITIAL_STATE = {
     // Sheet02Team writes to data.teamMembers (for rich detail) AND this array (for identity).
     // App.jsx handleSheetUpdate("02", ...) automatically syncs teamMembers → loginCodes.
     loginCodes: [],
+
+    // Stage 1 synthesised project document (the "container") — persisted so the
+    // Review Data → Synthesised Document tab survives refreshes and L3 round-trips.
+    intermediateDoc: "",
   },
 
   // ── Layer 3 state ─────────────────────────────────────────────────────────
@@ -91,16 +95,47 @@ export const STATUS_CONFIG = {
   approved:     { label: 'Approved',    color: 'var(--color-text-success)',    bg: 'var(--color-background-success)'   },
 };
 
-// Generate a login code: PREFIX-XXXX
+// ── Code generation — single authority for ALL codes platform-wide ──────────
+// No component may generate codes inline; always import from here.
+// Uniform format: <PROJECT-CODE>-<4 digits> for team members (incl. PM),
+//                 <SP|GU|OB>-<4 digits> for external users.
+
+// Generate a team member login code: PROJECTCODE-XXXX
+// Uses the full project code as entered (input is capped at 6 chars).
 // Deduplicates against existingCodes to guarantee uniqueness within a project.
 export function generateLoginCode(projectCode, existingCodes = []) {
-  const prefix = (projectCode || 'NC').toUpperCase().slice(0, 4);
+  const prefix = (projectCode || 'NC').toUpperCase().slice(0, 6);
   let code;
   do {
     const num = Math.floor(1000 + Math.random() * 9000);
     code = `${prefix}-${num}`;
   } while (existingCodes.includes(code));
   return code;
+}
+
+// Generate an external user code: SP-XXXX / GU-XXXX / OB-XXXX
+// Deduplicates against existingCodes (pass ALL codes — team + external).
+export function generateExternalCode(type, existingCodes = []) {
+  const prefix = { sponsor:'SP', guest:'GU', observer:'OB' }[type] || 'EX';
+  let code;
+  do {
+    const num = Math.floor(1000 + Math.random() * 9000);
+    code = `${prefix}-${num}`;
+  } while (existingCodes.includes(code));
+  return code;
+}
+
+// Collect every code currently in use across the project — the one list to
+// pass as existingCodes so no generator can ever collide with another.
+export function collectAllCodes(state) {
+  const l2 = state?.l2 || {};
+  const team = l2.sheets?.['02']?.data?.teamMembers || [];
+  const ext  = l2.sheets?.['02']?.data?.externalUsers || [];
+  return [
+    ...(l2.loginCodes || []).map(m => m.loginCode),
+    ...team.map(m => m.loginCode),
+    ...ext.map(u => u.loginCode),
+  ].filter(Boolean);
 }
 
 // Derive sheet status from data

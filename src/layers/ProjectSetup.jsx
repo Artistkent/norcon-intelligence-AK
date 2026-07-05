@@ -262,8 +262,9 @@ function PMSetup({ tier, onConfirm, onBack }) {
   };
   const generateCode = () => {
     if (!validate()) return;
-    const prefix=(projectCode||"PM").toUpperCase().slice(0,5);
-    setPmCode(`${prefix}-${Math.floor(1000+Math.random()*9000)}`); setCodeReady(true);
+    // Canonical generator — same prefix rules as every other code in the project
+    setPmCode(generateLoginCode(projectCode || "PM", []));
+    setCodeReady(true);
   };
   const handleConfirm = () => {
     if (!codeReady) { generateCode(); return; }
@@ -361,6 +362,71 @@ function PMSetup({ tier, onConfirm, onBack }) {
       </div>
     </div>
   );
+}
+
+// ── Animated pipeline tracker — shows the user exactly what the AI is doing ──
+const PIPELINE_STEPS = [
+  { id:"reading",      label:"Reading your input" },
+  { id:"synthesising", label:"Creating comprehensive project plan" },
+  { id:"extracting",   label:"Extracting structured data" },
+  { id:"populating",   label:"Populating project sheets" },
+  { id:"finalising",   label:"Filling remaining gaps" },
+];
+
+function PipelineTracker({ stage, statusText }) {
+  const activeIdx = PIPELINE_STEPS.findIndex(s => s.id === stage);
+  if (activeIdx === -1) return null;
+  return (
+    <div style={{ background:C.surface2, border:`1px solid ${C.accentL}44`, borderRadius:8,
+      padding:"14px 16px", marginTop:12 }}>
+      {PIPELINE_STEPS.map((step, i) => {
+        const done   = i < activeIdx;
+        const active = i === activeIdx;
+        return (
+          <div key={step.id} style={{ display:"flex", alignItems:"center", gap:10,
+            padding:"5px 0", opacity: done||active ? 1 : 0.35, transition:"opacity .3s" }}>
+            <div style={{ width:18, height:18, borderRadius:"50%", flexShrink:0,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              background: done ? C.activity+"22" : active ? C.accentL+"22" : "transparent",
+              border: `1.5px solid ${done ? C.activity : active ? C.accentL : C.border}` }}>
+              {done && <span style={{ fontSize:10, color:C.activity }}>✓</span>}
+              {active && <span style={{ width:7, height:7, borderRadius:"50%", background:C.accentL,
+                animation:"pulse 1.1s ease-in-out infinite" }}/>}
+            </div>
+            <div style={{ fontSize:11, fontWeight: active?700:400,
+              color: done ? C.dim : active ? C.accentL : C.muted }}>
+              {step.label}{active && <AnimatedDots/>}
+            </div>
+          </div>
+        );
+      })}
+      {statusText && (
+        <div style={{ fontSize:10, color:C.muted, fontStyle:"italic", marginTop:8,
+          paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+          {statusText}
+        </div>
+      )}
+      <div style={{ height:3, borderRadius:2, background:C.border, marginTop:10, overflow:"hidden", position:"relative" }}>
+        <div style={{ position:"absolute", top:0, bottom:0, width:"35%", borderRadius:2,
+          background:`linear-gradient(90deg, transparent, ${C.accentL}, transparent)`,
+          animation:"slide 1.4s ease-in-out infinite" }}/>
+      </div>
+      <style>{`
+        @keyframes pulse{0%,100%{opacity:.3;transform:scale(.7)}50%{opacity:1;transform:scale(1.15)}}
+        @keyframes slide{0%{left:-35%}100%{left:100%}}
+        @keyframes dots{0%,20%{content:""}40%{content:"."}60%{content:".."}80%,100%{content:"..."}}
+      `}</style>
+    </div>
+  );
+}
+
+function AnimatedDots() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setN(v => (v+1)%4), 400);
+    return () => clearInterval(t);
+  }, []);
+  return <span>{".".repeat(n)}</span>;
 }
 
 // ── Review Extracted Data — optional modal, tables, edits save instantly ────
@@ -652,6 +718,9 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
   const [uploadMode, setUploadMode] = useState("file");
   const [pasteText, setPasteText] = useState("");
   const [extracting, setExtracting] = useState(false);
+  // Which pipeline stage is running — drives the animated progress tracker
+  // null | "reading" | "synthesising" | "extracting" | "populating" | "finalising"
+  const [pipelineStage, setPipelineStage] = useState(null);
   const [showReview, setShowReview] = useState(false);
 
   const wizardSheetOrder = tierCfg ? scheduleLast(WIZARD_SHEETS[tier]) : [];
@@ -767,7 +836,7 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
   // free to capture comms plans, quality gates, budget breakdowns, constraints,
   // lessons learned etc. These land in documentSummary and surface in Review Data.
 
-  const [intermediateDoc, setIntermediateDoc] = useState("");
+  const [intermediateDoc, setIntermediateDoc] = useState(l2?.intermediateDoc || "");
 
   const synthesiseDocuments = async (fileContents, sources) => {
     // Stage 1 — project intelligence engine.
@@ -778,6 +847,7 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
     // Either way the output is an intermediate project document — the container —
     // from which Stage 2 extracts the schema fields.
     const isSparse = fileContents.length === 1 && fileContents[0].text.length < 600;
+    setPipelineStage("synthesising");
     setAiStatus(isSparse ? "Generating project plan…" : "Creating comprehensive project plan from your documents…");
 
     const combined = fileContents.map(f =>
@@ -820,12 +890,16 @@ Be exhaustive. Never truncate. ${isSparse ? "A sparse input should produce a com
       [{ role:"user", content:stage1Prompt }], 6000
     );
     setIntermediateDoc(intermediateText);
+    // Persist to l2 state — survives remounts, refresh, and L3 round-trips,
+    // and is saved to Redis with the rest of the project state.
+    onSheetUpdate("__intermediateDoc__", {}, "empty", intermediateText);
     setDocAnalysis(intermediateText.slice(0, 500) + (intermediateText.length > 500 ? "…" : ""));
     return intermediateText;
   };
 
 
   const extractSchemaFromDocument = async (intermediateText) => {
+    setPipelineStage("extracting");
     setAiStatus("Extracting structured data from synthesised document…");
     const prompt = `Extract ALL structured project data from this project document into the JSON schema below.
 
@@ -849,6 +923,7 @@ Return ONLY JSON, no markdown, no preamble:
   };
 
   const applyExtractedData = (extracted) => {
+    setPipelineStage("populating");
     // Sheet 01 — charter + benefits (single atomic write, no race condition)
     if (extracted.charter || extracted.benefits?.length) {
       const c = sheets["01"]?.data?.charter || {};
@@ -973,10 +1048,80 @@ Return ONLY JSON, no markdown, no preamble:
     }
   };
 
+  // Generate activities and risks when extraction/synthesis leaves gaps.
+  // Runs AFTER extraction — never overwrites data already placed.
+  const generateMissingContent = async (source) => {
+    setPipelineStage("finalising");
+    const c = sheets["01"]?.data?.charter || {};
+    const projectName   = c.projectName   || "";
+    const purpose       = c.purpose       || "";
+    const organisation  = c.organisation  || "";
+    const existingActs  = sheets["03"]?.data?.activities || [];
+    const existingRisks = sheets["05"]?.data?.risks || [];
+    if (!projectName && !purpose) return;
+
+    const contextStr = [
+      projectName  ? `Project: ${projectName}` : "",
+      organisation ? `Organisation: ${organisation}` : "",
+      purpose      ? `Purpose: ${purpose}` : "",
+      c.problemStatement ? `Problem: ${c.problemStatement}` : "",
+    ].filter(Boolean).join("\n");
+
+    if (existingActs.length === 0) {
+      setAiStatus("Generating project schedule…");
+      try {
+        const prompt = `You are an expert PM. Based on this project context, generate a realistic schedule of 6-10 activities across APM lifecycle phases (Concept, Definition, Development, Handover & Closeout).
+
+${contextStr}
+
+Return ONLY JSON, no markdown:
+{"activities":[{"name":"","phase":"","responsible":"","description":""}]}
+
+Rules: use ONLY those phases; leave responsible blank; make activity names specific to this project.`;
+        const raw = await callExtract([{role:"user",content:prompt}], 2000);
+        const parsed = safeParseJSON(raw);
+        if (parsed.activities?.length) {
+          const newA = parsed.activities.filter(a => a.name).map((a,i) => ({
+            _id:`ACT-${String(i+1).padStart(3,"0")}`,
+            name:a.name, phase:a.phase||"Definition", responsible:"",
+            description:a.description||"", _complete:false, _state:"pending",
+          }));
+          if (newA.length) onSheetUpdate("03", { activities:newA, milestones: sheets["03"]?.data?.milestones||[] }, "ai-draft");
+        }
+      } catch(e) { /* non-fatal */ }
+    }
+
+    if (existingRisks.length === 0) {
+      setAiStatus("Generating risk register…");
+      try {
+        const prompt = `You are a project risk expert. Based on this project context, identify 4-6 realistic risks.
+
+${contextStr}
+
+Return ONLY JSON, no markdown:
+{"risks":[{"name":"","cause":"","potentialImpact":"","likelihood":"2 - Medium","impact":"2 - Medium","response":"Reduce","mitigation":"","category":""}]}
+
+Use ONLY these likelihood/impact values: "1 - Low", "2 - Medium", "3 - High".`;
+        const raw = await callExtract([{role:"user",content:prompt}], 1500);
+        const parsed = safeParseJSON(raw);
+        if (parsed.risks?.length) {
+          const newR = parsed.risks.filter(r => r.name).map((r,i) => ({
+            _id:`R-${String(101+i)}`, name:r.name, cause:r.cause||"",
+            potentialImpact:r.potentialImpact||"", likelihood:r.likelihood||"2 - Medium",
+            impact:r.impact||"2 - Medium", response:r.response||"Reduce",
+            mitigation:r.mitigation||"", category:r.category||"",
+          }));
+          if (newR.length) onSheetUpdate("05", { risks:newR }, "ai-draft");
+        }
+      } catch(e) { /* non-fatal */ }
+    }
+  };
+
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files||[]);
     if (!files.length) return;
     setExtracting(true);
+    setPipelineStage("reading");
     const fileContents = [];
     for (const file of files) {
       setAiStatus(`Reading ${file.name}…`);
@@ -1012,6 +1157,7 @@ Return ONLY JSON, no markdown, no preamble:
     }
 
     setExtracting(false);
+    setPipelineStage(null);
     setAiStatus("");
     e.target.value = "";
   };
@@ -1019,6 +1165,7 @@ Return ONLY JSON, no markdown, no preamble:
   const handleTextExtract = async () => {
     if (!pasteText.trim()) return;
     setExtracting(true);
+    setPipelineStage("reading");
     try {
       // Paste text goes through the full two-stage pipeline — same as file upload.
       // This means "I want to organise a birthday party for my 18th" produces a
@@ -1036,6 +1183,7 @@ Return ONLY JSON, no markdown, no preamble:
       }
     } catch(err) { setAiStatus(`⚠ ${err.message}`); }
     setExtracting(false);
+    setPipelineStage(null);
     setAiStatus("");
   };
 
@@ -1375,6 +1523,10 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
                     {extracting ? `⚡ ${aiStatus||"Processing…"}` : "⚡ Extract Information"}
                   </button>
                 </div>
+              )}
+
+              {extracting && (
+                <PipelineTracker stage={pipelineStage} statusText={aiStatus}/>
               )}
 
               {fileList.length > 0 && (
