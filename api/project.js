@@ -65,19 +65,29 @@ function hasMemberCodes(state) {
   return collectLoginMembers(state).length > 0;
 }
 
+function isLaunchedProject(state) {
+  return state?.project?.status === "active" || !!state?.baseline || !!state?.currentPlan;
+}
+
 function authoriseSave(existingState, incomingState, memberCode) {
   if (!normaliseCode(memberCode)) {
     return { ok:false, status:401, error:"memberCode required to save project state" };
   }
 
+  const incomingPm = isProjectManager(findMember(incomingState, memberCode));
+
   if (!existingState) {
-    if (isProjectManager(findMember(incomingState, memberCode))) return { ok:true };
+    if (incomingPm) return { ok:true };
     return { ok:false, status:403, error:"Initial project save requires a Project Manager code" };
   }
 
   if (findMember(existingState, memberCode)) return { ok:true };
 
-  if (!hasMemberCodes(existingState) && isProjectManager(findMember(incomingState, memberCode))) {
+  if (!hasMemberCodes(existingState) && incomingPm) {
+    return { ok:true };
+  }
+
+  if (!isLaunchedProject(existingState) && incomingPm) {
     return { ok:true };
   }
 

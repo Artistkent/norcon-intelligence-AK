@@ -56,6 +56,7 @@ export default function App() {
   const [restoring,  setRestoring]  = useState(true);
   const [lastLogin,  setLastLogin]  = useState(null); // { projectCode, memberCode, memberName, lastUsed }
   const [saveStatus, setSaveStatus] = useState(null); // null | "saved" | "error"
+  const [saveError,  setSaveError]  = useState("");
   const { saveState, authenticate } = useProjectPersistence();
   const saveTimer      = useRef(null);
   const saveStatusTimer = useRef(null);
@@ -99,8 +100,10 @@ export default function App() {
       try {
         await saveState(code, state, memberCode);
         setSaveStatus("saved");
+        setSaveError("");
       } catch(e) {
         console.warn("Project autosave failed:", e?.message || e);
+        setSaveError(e?.message || "Save failed");
         setSaveStatus("error");
       }
       // Clear badge after 3 seconds
@@ -372,8 +375,10 @@ export default function App() {
       try {
         await saveState(code, nextState, memberCode);
         setSaveStatus("saved");
+        setSaveError("");
       } catch(e) {
         console.warn("Project launch save failed:", e?.message || e);
+        setSaveError(e?.message || "Launch save failed");
         setSaveStatus("error");
         return;
       }
@@ -451,7 +456,7 @@ export default function App() {
                 <span style={{ fontSize:10, color:"#3ae0a2" }}>✓ Saved</span>
               )}
               {saveStatus === "error" && (
-                <span style={{ fontSize:10, color:C.risk }}>⚠ Save failed — check connection</span>
+                <span style={{ fontSize:10, color:C.risk }}>⚠ Save failed — {saveError || "check connection"}</span>
               )}
               {l3Unlocked && projectActive && (
                 <button onClick={() => handleGoToL3()}
