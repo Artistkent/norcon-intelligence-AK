@@ -43,9 +43,11 @@ function autoDate(items) {
   });
   let cur = addDays(new Date(), 1);
   return sorted.map(item => {
-    // Preserve dates on ANY item that has them. Auto-dating only fills blanks.
-    const hasDate = !!(parseDate(item.startDate) || parseDate(item.targetDate));
-    if (hasDate) {
+    // Preserve dates on ANY item that has them, unless it was explicitly
+    // auto-dated before (_autoDate === true). Extracted/imported items have
+    // _autoDate undefined — their real dates must never be overwritten.
+    const hasRealDate = item._autoDate !== true && !!(parseDate(item.startDate) || parseDate(item.targetDate));
+    if (hasRealDate) {
       const end = parseDate(item.targetDate || item.startDate);
       if (end) {
         const after = addDays(end, 2);
@@ -283,19 +285,39 @@ export default function L3IntegratedBaseline({ state, activities, milestones, me
 
   const updateItemDate = useCallback((taskId, itemType, field, newVal) => {
     if (!newVal) return;
-    // Native date inputs fire onChange with partial years while typing
-    // (typing "2025" passes through year 0002 → chart range explodes to
-    // thousands of years → SVG width hits millions of px → everything
-    // vanishes from the visible viewport). Only accept plausible years.
+    // Native date inputs fire onChange with partial years while typing —
+    // only accept plausible years to prevent SVG width explosion.
     const yr = parseInt(newVal.slice(0, 4));
     if (isNaN(yr) || yr < 2000 || yr > 2100) return;
     const key = itemType === "milestone" ? "milestones" : "activities";
-    saveSheet03({
-      [key]: (sheets["03"]?.data?.[key] || []).map(i =>
-        i._id === taskId ? { ...i, [field]: newVal, _autoDate: false } : i
-      ),
+    // Read from prev inside onStateChange (not the outer closure) to prevent
+    // stale-closure reads wiping sibling fields on the same item (Bug 2).
+    // Also mark ALL items _autoDate:false so autoDate() never cascades
+    // downstream dates when one item is manually edited (Bug 1).
+    onStateChange(prev => {
+      const list = prev.l2.sheets["03"]?.data?.[key] || [];
+      const next = list.map(i => {
+        if (i._id === taskId) return { ...i, [field]: newVal, _autoDate: false };
+        // Lock every other item that has real dates so autoDate() won't
+        // shift them when it recalculates after this state update.
+        if (i.startDate || i.targetDate) return { ...i, _autoDate: false };
+        return i;
+      });
+      return {
+        ...prev,
+        l2: {
+          ...prev.l2,
+          sheets: {
+            ...prev.l2.sheets,
+            "03": {
+              ...prev.l2.sheets["03"],
+              data: { ...prev.l2.sheets["03"]?.data, [key]: next },
+            },
+          },
+        },
+      };
     });
-  }, [sheets, saveSheet03]);
+  }, [onStateChange]);
 
   const handleDateFocus = useCallback((taskId, field, currentVal) => {
     preFocusValue.current[`${taskId}_${field}`] = currentVal;
