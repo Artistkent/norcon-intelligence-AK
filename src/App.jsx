@@ -370,20 +370,27 @@ export default function App() {
   const handleLaunch = useCallback(async () => {
     const code = state.project?.code;
     const memberCode = getSaveMemberCode(state, member);
-    const nextState = buildLaunchedState(state, memberCode);
-    if (code) {
-      try {
-        await saveState(code, nextState, memberCode);
-        setSaveStatus("saved");
-        setSaveError("");
-      } catch(e) {
-        console.warn("Project launch save failed:", e?.message || e);
-        setSaveError(e?.message || "Launch save failed");
-        setSaveStatus("error");
-        return;
-      }
+    if (!code) {
+      setSaveError("Project code is required before launch");
+      setSaveStatus("error");
+      return;
     }
+    if (!memberCode) {
+      setSaveError("Project Manager code is required before launch");
+      setSaveStatus("error");
+      return;
+    }
+    const nextState = buildLaunchedState(state, memberCode);
     setState(nextState);
+    try {
+      await saveState(code, nextState, memberCode);
+      setSaveStatus("saved");
+      setSaveError("");
+    } catch(e) {
+      console.warn("Project launch save failed:", e?.message || e);
+      setSaveError(e?.message || "Launch save failed");
+      setSaveStatus("error");
+    }
   }, [state, member, saveState]);
 
   const handleLogout = useCallback(() => {

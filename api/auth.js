@@ -8,6 +8,13 @@ function normaliseCode(value) {
   return String(value || '').toUpperCase().trim();
 }
 
+function readBody(req) {
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body); } catch { return {}; }
+  }
+  return req.body || {};
+}
+
 async function redisGet(key) {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) throw new Error('Redis not configured');
   const res = await fetch(`${UPSTASH_URL}/pipeline`, {
@@ -53,7 +60,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   try {
-    const { projectCode, memberCode } = req.body || {};
+    const { projectCode, memberCode } = readBody(req);
     if (!projectCode || !memberCode) {
       return res.status(400).json({ error: 'projectCode and memberCode required' });
     }

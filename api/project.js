@@ -10,6 +10,13 @@ function normaliseCode(value) {
   return String(value || "").toUpperCase().trim();
 }
 
+function readBody(req) {
+  if (typeof req.body === "string") {
+    try { return JSON.parse(req.body); } catch { return {}; }
+  }
+  return req.body || {};
+}
+
 function projectKey(projectCode) {
   return `project:${normaliseCode(projectCode)}`;
 }
@@ -120,7 +127,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      const { projectCode, state, memberCode } = req.body || {};
+      const { projectCode, state, memberCode } = readBody(req);
       if (!projectCode || !state) {
         return res.status(400).json({ error: "projectCode and state required" });
       }

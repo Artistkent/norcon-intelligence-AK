@@ -26,6 +26,13 @@ function normaliseCode(value) {
   return String(value || '').toUpperCase().trim();
 }
 
+function readBody(req) {
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body); } catch { return {}; }
+  }
+  return req.body || {};
+}
+
 function collectLoginMembers(state) {
   const loginCodes = Array.isArray(state?.l2?.loginCodes) ? state.l2.loginCodes : [];
   const teamMembers = Array.isArray(state?.l2?.sheets?.['02']?.data?.teamMembers)
@@ -105,7 +112,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { code, state, memberCode } = req.body || {};
+      const { code, state, memberCode } = readBody(req);
       if (!code || !state) return res.status(400).json({ error: 'code and state required' });
 
       const projectCode = normaliseCode(code);

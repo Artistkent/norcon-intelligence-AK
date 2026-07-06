@@ -1,6 +1,17 @@
 // Hook to auto-save project state to Redis and load on login
 import { useCallback } from 'react';
 
+async function readError(res, fallback) {
+  const text = await res.text().catch(() => '');
+  if (!text) return `${fallback} (${res.status})`;
+  try {
+    const parsed = JSON.parse(text);
+    return `${parsed.error || fallback} (${res.status})`;
+  } catch {
+    return `${fallback} (${res.status})`;
+  }
+}
+
 export function useProjectPersistence() {
   // Save project state to Redis. App.jsx handles debouncing so callers can await
   // this function and show accurate save status.
@@ -13,8 +24,7 @@ export function useProjectPersistence() {
       body: JSON.stringify({ code: projectCode, state, memberCode }),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to save project state');
+      throw new Error(await readError(res, 'Failed to save project state'));
     }
     return res.json();
   }, []);
@@ -25,8 +35,7 @@ export function useProjectPersistence() {
       credentials: 'same-origin',
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to load project');
+      throw new Error(await readError(res, 'Failed to load project'));
     }
     const data = await res.json();
     return data.state;
@@ -40,8 +49,8 @@ export function useProjectPersistence() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectCode, memberCode }),
     });
+    if (!res.ok) throw new Error(await readError(res, 'Authentication failed'));
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Authentication failed');
     return data; // { member, state }
   }, []);
 
