@@ -51,6 +51,33 @@ const WIZARD_SHEETS = {
 // Schedule ("03") always appended last — needs maximum accumulated context
 const scheduleLast = (arr) => [...arr, "03"];
 
+// Normalise any date string to YYYY-MM-DD (required by <input type="date">).
+// Accepts ISO strings, MM/DD/YYYY, DD/MM/YYYY (heuristic), and natural language.
+// Returns empty string if unparseable.
+function toYMD(s) {
+  if (!s || typeof s !== "string") return "";
+  const t = s.trim();
+  if (!t || t === "mm/dd/yyyy" || t === "TBD" || t === "N/A") return "";
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  // MM/DD/YYYY or M/D/YYYY
+  const mdy = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
+  // DD-MM-YYYY or DD.MM.YYYY
+  const dmy = t.match(/^(\d{1,2})[\-\.](\d{1,2})[\-\.](\d{4})$/);
+  if (dmy) {
+    const [,d,m,y] = dmy;
+    // If first number > 12 it must be day-first
+    return parseInt(d) > 12
+      ? `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`
+      : `${y}-${d.padStart(2,"0")}-${m.padStart(2,"0")}`;
+  }
+  // Fall back to Date constructor (handles ISO 8601 variants, natural language)
+  const d = new Date(t);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
 const CLUSTERS = {
   "02": [
     { id:"t2", title:"Core team", fields:[
@@ -430,17 +457,8 @@ function AnimatedDots() {
 }
 
 // ── Review Extracted Data — optional modal, tables, edits save instantly ────
-function renumberSerial(items, prefix) {
-  return items.map((item, index) => ({
-    ...item,
-    _id: `${prefix}-${String(index + 1).padStart(3,"0")}`,
-  }));
-}
-
-function ReviewModal({ sheets, tier, project, intermediateDoc, onUpdate, onClose }) {
+function ReviewModal({ sheets, tier, intermediateDoc, onUpdate, onClose }) {
   const [reviewTab, setReviewTab] = useState(intermediateDoc ? "source" : "structured");
-  const [dirty, setDirty] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
   const charter = sheets["01"]?.data?.charter || {};
   const team    = sheets["02"]?.data?.teamMembers || [];
   const acts         = sheets["03"]?.data?.activities || [];
@@ -456,23 +474,6 @@ function ReviewModal({ sheets, tier, project, intermediateDoc, onUpdate, onClose
   const th = { padding:"7px 8px", textAlign:"left", fontWeight:700, fontSize:9, color:C.muted,
     textTransform:"uppercase", letterSpacing:".4px", borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
   const td = { borderBottom:`1px solid ${C.border}22` };
-  const isActiveProject = project?.status === "active";
-  const handleClose = () => {
-    if (dirty) {
-      setConfirmClose(true);
-      return;
-    }
-    onClose();
-  };
-  const saveAndClose = () => {
-    setDirty(false);
-    setConfirmClose(false);
-    onClose();
-  };
-  const reviewUpdate = (...args) => {
-    setDirty(true);
-    onUpdate(...args);
-  };
 
   const Section = ({ title, count, children }) => (
     <div style={{ marginBottom:24 }}>
@@ -484,46 +485,40 @@ function ReviewModal({ sheets, tier, project, intermediateDoc, onUpdate, onClose
     </div>
   );
 
-  const updateCharterField = (key, value) => reviewUpdate("01", { charter:{...charter,[key]:value} }, "in-progress");
+  const updateCharterField = (key, value) => onUpdate("01", { charter:{...charter,[key]:value} }, "in-progress");
   const updateTeamField = (idx, field, value) => {
     const next = team.map((m,i)=>i===idx?{...m,[field]:value}:m);
-    reviewUpdate("02", { teamMembers: next }, "in-progress");
+    onUpdate("02", { teamMembers: next }, "in-progress");
   };
   const updateActField = (idx, field, value) => {
     const next = acts.map((a,i)=>i===idx?{...a,[field]:value}:a);
-    reviewUpdate("03", { activities: next, milestones: miles }, "in-progress");
+    onUpdate("03", { activities: next, milestones: miles }, "in-progress");
   };
-  const removeAct = (idx) => {
-    const next = acts.filter((_,i)=>i!==idx);
-    reviewUpdate("03", { activities: isActiveProject ? next : renumberSerial(next, "ACT"), milestones: miles }, "in-progress");
-  };
+  const removeAct = (idx) => onUpdate("03", { activities: acts.filter((_,i)=>i!==idx), milestones: miles }, "in-progress");
   const updateMileField = (idx, field, value) => {
     const next = miles.map((m,i)=>i===idx?{...m,[field]:value}:m);
-    reviewUpdate("03", { activities: acts, milestones: next }, "in-progress");
+    onUpdate("03", { activities: acts, milestones: next }, "in-progress");
   };
-  const removeMile = (idx) => {
-    const next = miles.filter((_,i)=>i!==idx);
-    reviewUpdate("03", { activities: acts, milestones: isActiveProject ? next : renumberSerial(next, "MS") }, "in-progress");
-  };
+  const removeMile = (idx) => onUpdate("03", { activities: acts, milestones: miles.filter((_,i)=>i!==idx) }, "in-progress");
   const updateRiskField = (idx, field, value) => {
     const next = risks.map((r,i)=>i===idx?{...r,[field]:value}:r);
-    reviewUpdate("05", { risks: next }, "in-progress");
+    onUpdate("05", { risks: next }, "in-progress");
   };
-  const removeRisk = (idx) => reviewUpdate("05", { risks: risks.filter((_,i)=>i!==idx) }, "in-progress");
+  const removeRisk = (idx) => onUpdate("05", { risks: risks.filter((_,i)=>i!==idx) }, "in-progress");
   const updateSHField = (idx, field, value) => {
     const next = stakeholders.map((s,i)=>i===idx?{...s,[field]:value}:s);
-    reviewUpdate("08", { stakeholders: next }, "in-progress");
+    onUpdate("08", { stakeholders: next }, "in-progress");
   };
-  const removeSH = (idx) => reviewUpdate("08", { stakeholders: stakeholders.filter((_,i)=>i!==idx) }, "in-progress");
+  const removeSH = (idx) => onUpdate("08", { stakeholders: stakeholders.filter((_,i)=>i!==idx) }, "in-progress");
   const updateBenField = (idx, field, value) => {
     const next = benefits.map((b,i)=>i===idx?{...b,[field]:value}:b);
     const currentCharter = sheets["01"]?.data?.charter || {};
-    reviewUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
+    onUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
   };
   const removeBen = (idx) => {
     const next = benefits.filter((_,i)=>i!==idx);
     const currentCharter = sheets["01"]?.data?.charter || {};
-    reviewUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
+    onUpdate("01", { charter: { ...currentCharter, benefits: next } }, "in-progress");
   };
 
   const overviewFields = [
@@ -534,26 +529,20 @@ function ReviewModal({ sheets, tier, project, intermediateDoc, onUpdate, onClose
   ];
 
   return (
-    <div onClick={handleClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:400,
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:400,
       display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div onClick={e=>e.stopPropagation()} style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12,
         width:"100%", maxWidth:1000, maxHeight:"90vh", display:"flex", flexDirection:"column",
-        boxShadow:"0 20px 60px rgba(0,0,0,0.6)", position:"relative" }}>
+        boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
 
         <div style={{ padding:"18px 24px 0", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:C.sage }}>Review Extracted Data</div>
-              <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Edit directly, then save before closing.</div>
+              <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Edit directly — changes save instantly.</div>
             </div>
-            <div style={{ display:"flex", gap:8 }}>
-              {dirty && (
-                <button onClick={saveAndClose} style={{ background:C.accent, border:"none", borderRadius:6,
-                  color:"#fff", padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>Save Changes</button>
-              )}
-              <button onClick={handleClose} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
-                color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
-            </div>
+            <button onClick={onClose} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+              color:C.muted, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>Close</button>
           </div>
           {/* Tab bar */}
           {[
@@ -732,20 +721,6 @@ function ReviewModal({ sheets, tier, project, intermediateDoc, onUpdate, onClose
           )}
           </>)}
         </div>
-        {confirmClose && (
-          <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:12 }}>
-            <div onClick={e=>e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:22, width:340, boxShadow:"0 12px 36px #0008" }}>
-              <div style={{ fontSize:14, fontWeight:700, color:C.sage, marginBottom:6 }}>Save review edits?</div>
-              <div style={{ fontSize:12, color:C.muted, lineHeight:1.5, marginBottom:16 }}>
-                You changed data in Review Data. Save those edits before closing this view.
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                <button onClick={saveAndClose} style={{ padding:"9px 14px", background:C.accent, border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Save & Close</button>
-                <button onClick={()=>setConfirmClose(false)} style={{ padding:"9px 14px", background:"none", border:`1px solid ${C.border}`, borderRadius:6, color:C.dim, fontSize:12, cursor:"pointer" }}>Keep Editing</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -754,45 +729,12 @@ function EmptyNote() {
   return <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", padding:"8px 0" }}>Nothing here yet.</div>;
 }
 
-function LaunchConfirmModal({ onConfirm, onCancel }) {
-  return (
-    <div onClick={onCancel} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.68)", zIndex:700,
-      display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:C.surface, border:`1px solid ${C.border}`,
-        borderRadius:10, padding:"20px 22px", width:"100%", maxWidth:430, boxShadow:"0 14px 40px rgba(0,0,0,.35)" }}>
-        <div style={{ fontSize:15, fontWeight:800, color:C.sage, marginBottom:8 }}>Launch Project</div>
-        <div style={{ fontSize:12, color:C.dim, lineHeight:1.6, marginBottom:18 }}>
-          Launching will lock your project baseline. Any future changes to scope, schedule, or cost will require a Change Control Request. Continue?
-        </div>
-        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-          <button onClick={onCancel}
-            style={{ padding:"8px 14px", background:"none", border:`1px solid ${C.border}`, borderRadius:5,
-              color:C.muted, fontSize:12, cursor:"pointer" }}>Cancel</button>
-          <button onClick={onConfirm}
-            style={{ padding:"8px 16px", background:C.accent, border:"none", borderRadius:5,
-              color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Yes, Launch</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onSheetUnlock, onSheetNav, onLaunch, onLogout }) {
+  const [showLaunchConfirm, setShowLaunchConfirm] = useState(false);
   const { l2, project } = state;
   const tier    = state.projectTier;
   const tierCfg = tier ? TIERS[tier] : null;
   const sheets  = l2?.sheets || {};
-  const isProjectActive = project?.status === "active";
-  const openProjectLabel = isProjectActive ? "Open Active Project ->" : "Launch Project ->";
-  const [showLaunchConfirm, setShowLaunchConfirm] = useState(false);
-  const requestLaunch = () => {
-    if (isProjectActive) onLaunch?.();
-    else setShowLaunchConfirm(true);
-  };
-  const confirmLaunch = () => {
-    setShowLaunchConfirm(false);
-    onLaunch?.();
-  };
 
   const isExisting = Object.values(sheets).some(s => s.status !== "empty") || (l2?.loginCodes||[]).length > 0;
   const pmAlreadySet = (l2?.loginCodes||[]).some(m => m.isPM || m.role === "Project Manager");
@@ -942,7 +884,16 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
 
     const sourceList = sources.join(", ");
 
+    const today = new Date().toISOString().slice(0,10);
+    const tierGuidance = tier === "light"
+      ? "This is a LIGHT-tier project (simple/lean). Do NOT include stakeholder-register activities, change-control activities, or formal governance-board activities in the schedule — keep activities focused on direct delivery. A brief stakeholder mention in prose is fine, but no dedicated register-population or change-control tasks."
+      : "This is a FULL-tier project — include stakeholder management and change control where appropriate.";
+
     const stage1Prompt = `You are a senior project manager. Based on the input below, produce a comprehensive, well-structured project document suitable for setting up a full project management platform.
+
+TODAY'S DATE: ${today}. All generated dates MUST be on or after today unless the input explicitly states otherwise. Anchor the schedule to start from today (or the input's stated start date if later) and work toward any stated deadline.
+
+TIER: ${tierGuidance}
 
 SOURCES: ${sourceList}
 
@@ -1082,12 +1033,31 @@ Return ONLY JSON, no markdown, no preamble:
           .filter(a => a.name && !existingActs.some(e => e.name?.toLowerCase().trim() === a.name.toLowerCase().trim()))
           .map((a,i) => ({
             _id:`ACT-${String(existingActs.length+i+1).padStart(3,"0")}`,
-            name:a.name, phase:a.phase||"", startDate:a.startDate||"", targetDate:a.targetDate||"",
+            name:a.name, phase:a.phase||"",
+            startDate:  toYMD(a.startDate),
+            targetDate: toYMD(a.targetDate),
             responsible: a.responsible && /coordinator|manager|lead|curator|controller|scheduler|analyst|specialist/i.test(a.responsible) ? a.responsible : "",
             description:a.description||"",
-            _complete:a._complete||false, _state:a._complete?"complete":"pending", plannedCost:a.plannedCost||"",
+            _complete:a._complete||false, _state:a._complete?"complete":"pending",
           }));
         if (newA.length) { finalActs = [...existingActs,...newA]; changed = true; }
+
+        // Migrate any plannedCost on extracted activities into costData structure
+        // so it renders in the Planned Cost (£) field in Sheet 03 and the L3 cost overview
+        const existingCostData = sheets["03"]?.data?.costData || {};
+        const newCostData = { ...existingCostData };
+        let costChanged = false;
+        extracted.activities.forEach((a, i) => {
+          if (!a.name) return;
+          const matched = finalActs.find(fa => fa.name?.toLowerCase().trim() === a.name.toLowerCase().trim());
+          if (matched && a.plannedCost && !newCostData[matched._id]?.plannedAmount) {
+            newCostData[matched._id] = { ...(newCostData[matched._id]||{}), plannedAmount: String(a.plannedCost) };
+            costChanged = true;
+          }
+        });
+        if (costChanged) {
+          onSheetUpdate("03", { costData: newCostData }, "ai-draft");
+        }
       }
       if (extracted.milestones?.length) {
         const newMs = extracted.milestones
@@ -1156,7 +1126,10 @@ Return ONLY JSON, no markdown, no preamble:
     if (existingActs.length === 0) {
       setAiStatus("Generating project schedule…");
       try {
+        const today = new Date().toISOString().slice(0,10);
         const prompt = `You are an expert PM. Based on this project context, generate a realistic schedule of 6-10 activities across APM lifecycle phases (Concept, Definition, Development, Handover & Closeout).
+TODAY'S DATE: ${today}. All dates must be on or after today.
+${tier === "light" ? "LIGHT-tier project: no stakeholder-register or change-control activities — direct delivery tasks only." : ""}
 
 ${contextStr}
 
@@ -1666,11 +1639,6 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
               <button onClick={()=>setShowReview(true)}
                 style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.accentL}55`, borderRadius:5,
                   color:C.accentL, fontSize:10, fontWeight:600, cursor:"pointer" }}>📋 Review Data</button>
-              {(l2?.loginCodes||[]).length > 0 && (
-                <button onClick={requestLaunch}
-                  style={{ padding:"5px 12px", background:C.accent, border:"none", borderRadius:5,
-                    color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer" }}>{openProjectLabel}</button>
-              )}
               {onLogout && (
                 <button onClick={onLogout}
                   style={{ padding:"4px 10px", background:"none", border:`1px solid ${C.border}`, borderRadius:5,
@@ -1700,11 +1668,13 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
           </div>
 
           <div style={{ position:"relative", flex:1, height:"100%", display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
-            <div style={{ maxWidth:540, width:"100%", background:C.surface, border:`1px solid ${C.border}`,
-              borderRadius:12, padding:"28px 32px", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
+            <div style={{ maxWidth:540, width:"100%", maxHeight:"100%", background:C.surface, border:`1px solid ${C.border}`,
+              borderRadius:12, padding:"28px 32px", boxShadow:"0 12px 40px rgba(0,0,0,0.5)",
+              display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-              <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:18 }}>{currentCluster.title}</div>
+              <div style={{ fontSize:16, fontWeight:700, color:C.sage, marginBottom:18, flexShrink:0 }}>{currentCluster.title}</div>
 
+              <div style={{ flex:1, minHeight:0, overflowY:"auto", marginBottom:4 }}>
               {currentCluster.fields.map(field => {
                 if (field.optional && isFieldKnown(field.key)) return null;
 
@@ -1896,7 +1866,9 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
                 );
               })}
 
-              <div style={{ display:"flex", gap:10, marginTop:8 }}>
+              </div>
+
+              <div style={{ display:"flex", gap:10, marginTop:10, flexShrink:0 }}>
                 <button onClick={goBackWizard}
                   style={{ padding:"10px 16px", background:"none", border:`1px solid ${C.border}`,
                     borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>← Back</button>
@@ -1913,10 +1885,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
         <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
 
         {showReview && (
-          <ReviewModal sheets={sheets} tier={tier} project={project} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
-        )}
-        {showLaunchConfirm && (
-          <LaunchConfirmModal onConfirm={confirmLaunch} onCancel={()=>setShowLaunchConfirm(false)}/>
+          <ReviewModal sheets={sheets} tier={tier} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
         )}
       </div>
     );
@@ -1991,7 +1960,20 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
             style={{ padding:"6px 14px", background:C.accent, border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Save Changes</button>
         )}
         {l3Unlocked && (
-          <button onClick={requestLaunch} style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>{openProjectLabel}</button>
+          state.project?.status === "active"
+            ? (
+              <button onClick={onLaunch}
+                style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5,
+                  color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                ▶ Open Active Project
+              </button>
+            ) : (
+              <button onClick={() => setShowLaunchConfirm(true)}
+                style={{ padding:"6px 14px", background:"#2E7D52", border:"none", borderRadius:5,
+                  color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                🚀 Launch Project →
+              </button>
+            )
         )}
       </div>
 
@@ -2003,6 +1985,41 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
         )}
       </div>
 
+
+      {showLaunchConfirm && (
+        <div onClick={() => setShowLaunchConfirm(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300,
+            display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:"#122E1E", border:"1px solid #1F4D34", borderRadius:12,
+              padding:28, maxWidth:400, width:"90%", boxShadow:"0 8px 40px #0009" }}>
+            <div style={{ fontSize:15, fontWeight:700, color:"#E5F0E8", marginBottom:10 }}>
+              🚀 Launch Project
+            </div>
+            <div style={{ fontSize:12, color:"#8aac96", lineHeight:1.7, marginBottom:22 }}>
+              Launching will lock your project baseline. Any future changes to scope, schedule,
+              or cost will require a <strong style={{ color:"#E5F0E8" }}>Change Control Request</strong>.
+              <br/><br/>
+              Continue?
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button
+                onClick={() => { setShowLaunchConfirm(false); onLaunch(); }}
+                style={{ flex:1, padding:"10px", background:"#2E7D52", border:"none",
+                  borderRadius:7, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                Yes, Launch
+              </button>
+              <button
+                onClick={() => setShowLaunchConfirm(false)}
+                style={{ flex:1, padding:"10px", background:"none",
+                  border:"1px solid #1F4D34", borderRadius:7,
+                  color:"#8aac96", fontSize:13, cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {savingPrompt && (
         <div onClick={discardAndNav} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200,
           display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -2021,10 +2038,7 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
       )}
 
       {showReview && (
-        <ReviewModal sheets={sheets} tier={tier} project={project} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
-      )}
-      {showLaunchConfirm && (
-        <LaunchConfirmModal onConfirm={confirmLaunch} onCancel={()=>setShowLaunchConfirm(false)}/>
+        <ReviewModal sheets={sheets} tier={tier} intermediateDoc={intermediateDoc} onUpdate={onSheetUpdate} onClose={()=>setShowReview(false)}/>
       )}
     </div>
   );
