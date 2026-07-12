@@ -293,6 +293,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     dirtyRef.current = false;
     dirtyDescRef.current = [];
     setLeavePopup(null);
+    if (onTabChange) onTabChange(toTab);
     setActiveTab(toTab);
     onTabChange?.(toTab);
   };
