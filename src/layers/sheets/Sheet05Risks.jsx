@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 const C = { surface:"#122E1E", surface2:"#183D28", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2", opp:"#9c6ee0" };
 const inp = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:5, color:C.sage, fontSize:12, padding:"6px 9px", outline:"none", boxSizing:"border-box", fontFamily:"inherit", width:"100%" };
@@ -43,6 +43,14 @@ function riskHasL3Data(r) {
 }
 function issueHasL3Data(iss) {
   return !!((iss.actionLog||[]).length>0||(iss.resolution||"").trim()||(iss.status&&iss.status!=="Open")||iss.linkedRiskId);
+}
+
+function nextRegisterId(items, prefix, startAt = 101) {
+  const max = (items || []).reduce((highest, item) => {
+    const n = parseInt(String(item?._id || "").replace(`${prefix}-`, ""), 10);
+    return Number.isFinite(n) ? Math.max(highest, n) : highest;
+  }, startAt - 1);
+  return `${prefix}-${String(max + 1).padStart(3,"0")}`;
 }
 
 // ── Pending team update approval panel ─────────────────────────────────────
@@ -113,6 +121,13 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
   const [pendingUpdates, setPendingUpdates] = useState(data.pendingUpdates || []);
   const [transitions,    setTransitions]    = useState(data.transitions    || []);
 
+  useEffect(() => {
+    setRisks(data.risks || []);
+    setIssues(data.issues || []);
+    setPendingUpdates(data.pendingUpdates || []);
+    setTransitions(data.transitions || []);
+  }, [data.risks, data.issues, data.pendingUpdates, data.transitions]);
+
   // Owner options: person names first, fall back to roles
   const PM_ROLES       = ["Project Manager","Project Sponsor","Project Director","Programme Manager","Portfolio Manager","Risk Manager","Change Manager","Quality Manager","Project Support","PMO Analyst"];
   const DELIVERY_ROLES = ["Lead Engineer","Site Manager","Quantity Surveyor","Design Manager","Commercial Manager","Health & Safety Manager","Environmental Manager","Procurement Manager","Logistics Coordinator","Contracts Manager"];
@@ -146,7 +161,7 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
   };
   const addRisk = () => {
     const next = [...risks, {
-      _id:`R-${String(101+risks.length).padStart(3,"0")}`,
+      _id:nextRegisterId(risks, "R"),
       type:"Threat", name:"", category:"", cause:"", potentialImpact:"",
       likelihood:"1 - Low", impact:"1 - Low",
       residualLikelihood:"", residualImpact:"",
@@ -167,7 +182,7 @@ export default function Sheet05Risks({ data, locked, loginCodes, onUpdate }) {
   };
   const addIssue = () => {
     const next = [...issues, {
-      _id:`I-${String(101+issues.length).padStart(3,"0")}`,
+      _id:nextRegisterId(issues, "I"),
       name:"", description:"", cause:"", impact:"",
       priority:"Medium", owner:"", raisedDate:"", targetResolutionDate:"",
       status:"Open", resolution:"", escalationPath:"",

@@ -68,7 +68,7 @@ function LeavePopup({ onLogCCR, onMinor, onDiscard, onCancel, tabLabel }) {
   );
 }
 
-export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete, onStateChange, onLogout, baseline, currentPlan, onConfirmBaseline, onApplyCCRToPlan, onTabChange, initialTab }) {
+export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete, onStateChange, onLogout, baseline, currentPlan, onConfirmBaseline, onApplyCCRToPlan, initialTab, onTabChange }) {
   const [activeTab,    setActiveTab]    = useState(initialTab || "home");
   const [ccrPending,   setCcrPending]   = useState(null);
   const [notification,  setNotification]  = useState(null);
@@ -194,7 +194,8 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     dirtyRollbackRef.current = []; // change submitted — rollbacks consumed
     setCcrPending(null);
     setActiveTab("report");
-  }, [ccrPending, changes, approvers, saveChanges]);
+    onTabChange?.("report");
+  }, [ccrPending, changes, approvers, saveChanges, onTabChange]);
 
   const handleCCRMinor = useCallback(() => {
     if (!ccrPending) return;
@@ -262,8 +263,8 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
         issues: prev.l2.sheets["05"]?.data?.issues || [],
       },
     }));
-    onConfirmBaseline?.();
-  }, [onConfirmBaseline, onStateChange]);
+    onConfirmBaseline?.(loginCode);
+  }, [loginCode, onConfirmBaseline, onStateChange]);
 
   const handleSustainRecord = useCallback((records) => {
     const arr   = Array.isArray(records) ? records : [records];
@@ -294,6 +295,7 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     setLeavePopup(null);
     if (onTabChange) onTabChange(toTab);
     setActiveTab(toTab);
+    onTabChange?.(toTab);
   };
 
   const handleLeaveLogCCR = () => {
@@ -319,7 +321,10 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     dirtyRef.current = false;
     dirtyDescRef.current = [];
     dirtyRollbackRef.current = [];
-    if (toTab) setActiveTab(toTab);
+    if (toTab) {
+      setActiveTab(toTab);
+      onTabChange?.(toTab);
+    }
   };
 
   const handleLeaveMinor = () => {
@@ -339,7 +344,10 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     dirtyDescRef.current = [];
     dirtyRollbackRef.current = []; // changes kept + logged — rollbacks no longer valid
     setLeavePopup(null);
-    if (toTab) setActiveTab(toTab);
+    if (toTab) {
+      setActiveTab(toTab);
+      onTabChange?.(toTab);
+    }
   };
 
   const handleLeaveDiscard = () => {
@@ -361,7 +369,10 @@ export default function OperatingLayer({ state, member, onGoToL2, onMarkComplete
     dirtyDescRef.current = [];
     const toTab = leavePopup?.toTab;
     setLeavePopup(null);
-    if (toTab) setActiveTab(toTab);
+    if (toTab) {
+      setActiveTab(toTab);
+      onTabChange?.(toTab);
+    }
   };
 
   const dirtyRollbackRef = useRef([]);

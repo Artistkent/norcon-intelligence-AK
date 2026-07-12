@@ -1,8 +1,19 @@
-// /api/auth — validate login code and return project state + user rights
+// /api/auth - validate login code and return project state + user rights
 // POST { projectCode, memberCode }
 
 const UPSTASH_URL   = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const UPSTASH_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+function normaliseCode(value) {
+  return String(value || '').toUpperCase().trim();
+}
+
+function readBody(req) {
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body); } catch { return {}; }
+  }
+  return req.body || {};
+}
 
 async function redisGet(key) {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) throw new Error('Redis not configured');
@@ -16,6 +27,31 @@ async function redisGet(key) {
   return data[0]?.result;
 }
 
+function collectAuthMembers(state) {
+  const loginCodes = Array.isArray(state?.l2?.loginCodes) ? state.l2.loginCodes : [];
+  const externalUsers = Array.isArray(state?.l2?.sheets?.['02']?.data?.externalUsers)
+    ? state.l2.sheets['02'].data.externalUsers
+    : [];
+
+  const externalMembers = externalUsers
+    .filter(user => user?.loginCode)
+    .map(user => ({
+      loginCode: user.loginCode,
+      name: user.name || user.organisation || `${user.type || 'External'} user`,
+      role: user.type === 'sponsor' ? 'Project Sponsor' : user.type === 'observer' ? 'Observer' : 'Guest',
+      accessType: user.type || 'guest',
+      isExternal: true,
+    }));
+
+  const byCode = new Map();
+  [...loginCodes, ...externalMembers].forEach((member) => {
+    const code = normaliseCode(member?.loginCode);
+    if (!code) return;
+    byCode.set(code, { ...(byCode.get(code) || {}), ...member, loginCode: code });
+  });
+  return [...byCode.values()];
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -24,50 +60,42 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   try {
-    const { projectCode, memberCode } = req.body || {};
+    const { projectCode, memberCode } = readBody(req);
     if (!projectCode || !memberCode) {
       return res.status(400).json({ error: 'projectCode and memberCode required' });
     }
 
-    const code  = projectCode.toUpperCase().trim();
-    const mCode = memberCode.toUpperCase().trim();
+    const code = normaliseCode(projectCode);
+    const mCode = normaliseCode(memberCode);
 
-    // Load project state from Redis
     const raw = await redisGet(`project:${code}`);
     if (!raw) {
       return res.status(404).json({ error: 'Project not found. Check your project code.' });
     }
 
     const state = JSON.parse(raw);
-
-    // Find the team member by login code
-    const loginCodes = state.l2?.loginCodes || [];
-    const member     = loginCodes.find(lc => lc.loginCode?.toUpperCase() === mCode);
+    const member = collectAuthMembers(state).find(lc => normaliseCode(lc.loginCode) === mCode);
 
     if (!member) {
       return res.status(401).json({ error: 'Invalid team member code. Check your login code.' });
     }
 
-    // Determine rights
-    const isPM       = member.role === 'Project Manager';
-    const isSponsor  = member.role === 'Project Sponsor' || member.role === 'Project Director';
-    // PM can act on behalf of sponsor — both have governance authority
+    const isPM = member.isPM === true || member.role === 'Project Manager';
+    const isSponsor = member.role === 'Project Sponsor' || member.role === 'Project Director';
     const canApprove = isPM || isSponsor;
     const rights = {
       isPM,
       isSponsor,
       canApprove,
-      role:       member.role,
-      name:       member.name,
-      loginCode:  member.loginCode,
-      isSponsor,
-      canApprove,
-      // RACI-based element rights built from Sheet 04 data
+      role: member.role,
+      name: member.name,
+      loginCode: member.loginCode,
+      isExternal: member.isExternal === true,
+      accessType: member.accessType || null,
       raciRights: buildRaciRights(member.loginCode, state),
     };
 
     return res.status(200).json({ ok: true, member: rights, state });
-
   } catch (err) {
     console.error('Auth error:', err.message);
     return res.status(500).json({ error: err.message });
@@ -75,10 +103,9 @@ export default async function handler(req, res) {
 }
 
 function buildRaciRights(loginCode, state) {
-  // Returns map of elementId -> 'R'|'A'|'C'|'I'
-  const raciData   = state.l2?.sheets?.['04']?.data || {};
-  const raciRows   = [...(raciData.raciRows || []), ...(raciData.customRows || [])];
-  const rights     = {};
+  const raciData = state.l2?.sheets?.['04']?.data || {};
+  const raciRows = [...(raciData.raciRows || []), ...(raciData.customRows || [])];
+  const rights = {};
   raciRows.forEach(row => {
     const assignment = row.assignments?.[loginCode];
     if (assignment) rights[row.taskId] = assignment;

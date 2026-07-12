@@ -51,6 +51,33 @@ const WIZARD_SHEETS = {
 // Schedule ("03") always appended last — needs maximum accumulated context
 const scheduleLast = (arr) => [...arr, "03"];
 
+// Normalise any date string to YYYY-MM-DD (required by <input type="date">).
+// Accepts ISO strings, MM/DD/YYYY, DD/MM/YYYY (heuristic), and natural language.
+// Returns empty string if unparseable.
+function toYMD(s) {
+  if (!s || typeof s !== "string") return "";
+  const t = s.trim();
+  if (!t || t === "mm/dd/yyyy" || t === "TBD" || t === "N/A") return "";
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  // MM/DD/YYYY or M/D/YYYY
+  const mdy = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
+  // DD-MM-YYYY or DD.MM.YYYY
+  const dmy = t.match(/^(\d{1,2})[\-\.](\d{1,2})[\-\.](\d{4})$/);
+  if (dmy) {
+    const [,d,m,y] = dmy;
+    // If first number > 12 it must be day-first
+    return parseInt(d) > 12
+      ? `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`
+      : `${y}-${d.padStart(2,"0")}-${m.padStart(2,"0")}`;
+  }
+  // Fall back to Date constructor (handles ISO 8601 variants, natural language)
+  const d = new Date(t);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
 const CLUSTERS = {
   "02": [
     { id:"t2", title:"Core team", fields:[
@@ -1006,12 +1033,31 @@ Return ONLY JSON, no markdown, no preamble:
           .filter(a => a.name && !existingActs.some(e => e.name?.toLowerCase().trim() === a.name.toLowerCase().trim()))
           .map((a,i) => ({
             _id:`ACT-${String(existingActs.length+i+1).padStart(3,"0")}`,
-            name:a.name, phase:a.phase||"", startDate:a.startDate||"", targetDate:a.targetDate||"",
+            name:a.name, phase:a.phase||"",
+            startDate:  toYMD(a.startDate),
+            targetDate: toYMD(a.targetDate),
             responsible: a.responsible && /coordinator|manager|lead|curator|controller|scheduler|analyst|specialist/i.test(a.responsible) ? a.responsible : "",
             description:a.description||"",
-            _complete:a._complete||false, _state:a._complete?"complete":"pending", plannedCost:a.plannedCost||"",
+            _complete:a._complete||false, _state:a._complete?"complete":"pending",
           }));
         if (newA.length) { finalActs = [...existingActs,...newA]; changed = true; }
+
+        // Migrate any plannedCost on extracted activities into costData structure
+        // so it renders in the Planned Cost (£) field in Sheet 03 and the L3 cost overview
+        const existingCostData = sheets["03"]?.data?.costData || {};
+        const newCostData = { ...existingCostData };
+        let costChanged = false;
+        extracted.activities.forEach((a, i) => {
+          if (!a.name) return;
+          const matched = finalActs.find(fa => fa.name?.toLowerCase().trim() === a.name.toLowerCase().trim());
+          if (matched && a.plannedCost && !newCostData[matched._id]?.plannedAmount) {
+            newCostData[matched._id] = { ...(newCostData[matched._id]||{}), plannedAmount: String(a.plannedCost) };
+            costChanged = true;
+          }
+        });
+        if (costChanged) {
+          onSheetUpdate("03", { costData: newCostData }, "ai-draft");
+        }
       }
       if (extracted.milestones?.length) {
         const newMs = extracted.milestones

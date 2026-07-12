@@ -11,13 +11,52 @@ const C = { bg:"#0D2B1B", surface:"#122E1E", border:"#1F4D34", accent:"#2E7D52",
 const SESSION_KEY    = "norcon_session_v1";
 const LAST_LOGIN_KEY = "norcon_last_login";
 
+function createInitialState() {
+  return JSON.parse(JSON.stringify(INITIAL_STATE));
+}
+
+function getSaveMemberCode(state, member) {
+  if (member?.loginCode) return member.loginCode;
+  const pm = state.l2?.loginCodes?.find(m => m.isPM || m.role === "Project Manager");
+  return pm?.loginCode || "";
+}
+
+function buildLaunchedState(state, loginCode) {
+  const lastActiveTab = state.project?.lastActiveTab || "dashboard";
+  const alreadyActive = state.project?.status === "active";
+  if (alreadyActive && state.baseline && state.currentPlan) {
+    return { ...state, activeLayer:"L3", project: { ...state.project, lastActiveTab } };
+  }
+
+  const snapshot = state.baseline?.snapshot || buildSnapshot(state.l2.sheets);
+  const today = new Date().toISOString().slice(0,10);
+  return {
+    ...state,
+    activeLayer:"L3",
+    project: { ...state.project, status:"active", lastActiveTab },
+    baseline: state.baseline || {
+      version: 1,
+      confirmedDate: today,
+      confirmedBy: loginCode,
+      snapshot,
+    },
+    currentPlan: state.currentPlan || {
+      version: 1,
+      lastUpdated: today,
+      lastCCR: null,
+      snapshot,
+    },
+  };
+}
+
 export default function App() {
   const [screen,     setScreen]     = useState("landing");
-  const [state,      setState]      = useState(INITIAL_STATE);
+  const [state,      setState]      = useState(createInitialState);
   const [member,     setMember]     = useState(null);
   const [restoring,  setRestoring]  = useState(true);
   const [lastLogin,  setLastLogin]  = useState(null); // { projectCode, memberCode, memberName, lastUsed }
   const [saveStatus, setSaveStatus] = useState(null); // null | "saved" | "error"
+  const [saveError,  setSaveError]  = useState("");
   const { saveState, authenticate } = useProjectPersistence();
   const saveTimer      = useRef(null);
   const saveStatusTimer = useRef(null);
@@ -54,23 +93,28 @@ export default function App() {
   useEffect(() => {
     const code = state.project?.code;
     if (!code || screen !== "app") return;
+    const memberCode = getSaveMemberCode(state, member);
+    if (!memberCode) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        await saveState(code, state);
+        await saveState(code, state, memberCode);
         setSaveStatus("saved");
+        setSaveError("");
       } catch(e) {
+        console.warn("Project autosave failed:", e?.message || e);
+        setSaveError(e?.message || "Save failed");
         setSaveStatus("error");
       }
       // Clear badge after 3 seconds
       if (saveStatusTimer.current) clearTimeout(saveStatusTimer.current);
       saveStatusTimer.current = setTimeout(() => setSaveStatus(null), 3000);
     }, 2000);
-  }, [state, screen, saveState]);
+  }, [state, member, screen, saveState]);
 
   // ── Auth ───────────────────────────────────────────────────────────────────
   const handleCreateNew = useCallback(() => {
-    setState(INITIAL_STATE);
+    setState(createInitialState());
     setMember(null);
     setScreen("app");
   }, []);
@@ -179,23 +223,13 @@ export default function App() {
       // When Sheet02 writes teamMembers, upsert named+coded members into loginCodes
       // AND remove loginCode entries for members no longer in the teamMembers list.
       if (sheetId === "02" && Array.isArray(data.teamMembers)) {
-        const incomingCodes = new Set(data.teamMembers.map(m => m.loginCode).filter(Boolean));
-
-        // Remove any loginCode entries whose code is no longer in teamMembers
-        nextCodes = nextCodes.filter(lc =>
-          !incomingCodes.has(lc.loginCode) === false || // keep if still present
-          !data.teamMembers.some(m => m.loginCode) // or if no coded members at all (safety)
-        );
-        // Simpler: keep entries whose loginCode still exists in the new teamMembers list
-        // or entries that were never in teamMembers to begin with (external codes etc)
         const teamCodes = new Set(data.teamMembers.map(m => m.loginCode).filter(Boolean));
-        // Identify which loginCodes came from teamMembers originally (have matching code)
-        // We remove loginCode entries that match a code that is now absent from teamMembers
-        // External codes (SP-XXXX, GU-XXXX, OB-XXXX) are never removed by this sync
         const isExternalCode = (code) => /^(SP|GU|OB)-\d{4}$/.test(code||"");
-        nextCodes = nextCodes.filter(lc =>
-          isExternalCode(lc.loginCode) || teamCodes.has(lc.loginCode)
-        );
+        if (teamCodes.size > 0) {
+          nextCodes = nextCodes.filter(lc =>
+            isExternalCode(lc.loginCode) || teamCodes.has(lc.loginCode)
+          );
+        }
 
         // Upsert members with both name and loginCode
         data.teamMembers.forEach(member => {
@@ -292,7 +326,7 @@ export default function App() {
   const handleGoToL3 = useCallback((tab) => {
     setState(prev => ({
       ...prev,
-      activeLayer: "L3",
+      activeLayer:"L3",
       project: { ...prev.project, lastActiveTab: tab || prev.project?.lastActiveTab || "dashboard" },
     }));
   }, []);
@@ -300,12 +334,15 @@ export default function App() {
   const handleTabChange = useCallback((tab) => {
     setState(prev => ({
       ...prev,
-      project: { ...prev.project, lastActiveTab: tab },
+      project: { ...prev.project, lastActiveTab: tab || prev.project?.lastActiveTab || "dashboard" },
     }));
   }, []);
 
   const handleConfirmBaseline = useCallback((loginCode) => {
     setState(prev => {
+      if (prev.baseline && prev.currentPlan) {
+        return { ...prev, project: { ...prev.project, status:"active" } };
+      }
       const sheets   = prev.l2.sheets;
       const snapshot = buildSnapshot(sheets);
       const today    = new Date().toISOString().slice(0,10);
@@ -330,41 +367,37 @@ export default function App() {
     });
   }, []);
 
-  const handleLaunch = useCallback(() => {
-    // Perform launch: set status active, write baseline (once only), navigate to L3
-    setState(prev => {
-      if (prev.baseline) {
-        // Baseline already exists — just navigate (re-launch after return to L2)
-        return { ...prev, activeLayer: "L3" };
-      }
-      const sheets   = prev.l2.sheets;
-      const snapshot = buildSnapshot(sheets);
-      const today    = new Date().toISOString().slice(0,10);
-      const pmCode   = (prev.l2.loginCodes||[]).find(m => m.isPM)?.loginCode || "PM";
-      const nextState = {
-        ...prev,
-        activeLayer: "L3",
-        project: {
-          ...prev.project,
-          status: "active",
-          lastActiveTab: prev.project?.lastActiveTab || "dashboard",
-        },
-        baseline:    { version:1, confirmedDate:today, confirmedBy:pmCode, snapshot },
-        currentPlan: { version:1, lastUpdated:today, lastCCR:null, snapshot },
-      };
-      // Persist immediately after baseline is set
-      const code = prev.project?.code;
-      if (code) {
-        fetch("/api/state", { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ code, state: nextState }) });
-      }
-      return nextState;
-    });
-  }, []);
+  const handleLaunch = useCallback(async () => {
+    const code = state.project?.code;
+    const memberCode = getSaveMemberCode(state, member);
+    if (!code) {
+      setSaveError("Project code is required before launch");
+      setSaveStatus("error");
+      return;
+    }
+    if (!memberCode) {
+      setSaveError("Project Manager code is required before launch");
+      setSaveStatus("error");
+      return;
+    }
+    const nextState = buildLaunchedState(state, memberCode);
+    setState(nextState);
+    try {
+      await saveState(code, nextState, memberCode);
+      setSaveStatus("saved");
+      setSaveError("");
+    } catch(e) {
+      console.warn("Project launch save failed:", e?.message || e);
+      setSaveError(e?.message || "Launch save failed");
+      setSaveStatus("error");
+    }
+  }, [state, member, saveState]);
 
   const handleLogout = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY);
-    setState(INITIAL_STATE);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (saveStatusTimer.current) clearTimeout(saveStatusTimer.current);
+    setState(createInitialState());
     setMember(null);
     setScreen("landing");
   }, []);
@@ -384,6 +417,7 @@ export default function App() {
 
   const approvedCount = Object.values(state.l2.sheets).filter(s => s.locked).length;
   const l3Unlocked    = state.l2.loginCodes.length > 0;
+  const projectActive = state.project?.status === "active";
 
   return (
     <div style={{ background:C.bg, color:C.sage, height:"100vh", display:"flex", flexDirection:"column",
@@ -402,8 +436,8 @@ export default function App() {
           currentPlan={state.currentPlan}
           onConfirmBaseline={handleConfirmBaseline}
           onApplyCCRToPlan={handleApplyCCRToPlan}
-          onTabChange={handleTabChange}
-          initialTab={state.project?.lastActiveTab || "dashboard"}/>
+          initialTab={state.project?.lastActiveTab || "dashboard"}
+          onTabChange={handleTabChange}/>
       )}
 
       {/* ── Project Setup ── */}
@@ -429,13 +463,13 @@ export default function App() {
                 <span style={{ fontSize:10, color:"#3ae0a2" }}>✓ Saved</span>
               )}
               {saveStatus === "error" && (
-                <span style={{ fontSize:10, color:C.risk }}>⚠ Save failed — check connection</span>
+                <span style={{ fontSize:10, color:C.risk }}>⚠ Save failed — {saveError || "check connection"}</span>
               )}
-              {l3Unlocked && state.project?.status === "active" && (
-                <button onClick={() => handleGoToL3(state.project?.lastActiveTab)}
+              {l3Unlocked && projectActive && (
+                <button onClick={() => handleGoToL3()}
                   style={{ padding:"5px 12px", fontSize:11, fontWeight:700, borderRadius:5,
                     border:"none", background:C.accent, color:"#fff", cursor:"pointer" }}>
-                  ▶ Open Active Project
+                  Open Active Project
                 </button>
               )}
               {state.projectTier && (

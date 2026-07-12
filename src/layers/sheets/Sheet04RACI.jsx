@@ -119,6 +119,12 @@ export default function Sheet04RACI({ data, locked, loginCodes, allSheets, onUpd
   const [matrix,     setMatrix]     = useState(() => data.raciRows?.length > 0 ? data.raciRows : buildAutoMatrix());
   const [customRows, setCustomRows] = useState(data.customRows || []);
 
+  useEffect(() => {
+    setActiveColumns(data.activeColumns || allMembers.map(m => m.loginCode));
+    setMatrix(data.raciRows?.length > 0 ? data.raciRows : buildAutoMatrix());
+    setCustomRows(data.customRows || []);
+  }, [data.activeColumns, data.raciRows, data.customRows, activities.length, milestones.length, allMembers.length]);
+
   const save = (mat, cust, cols) => {
     onUpdate({ raciRows:mat, customRows:cust, activeColumns:cols??activeColumns }, "in-progress");
   };

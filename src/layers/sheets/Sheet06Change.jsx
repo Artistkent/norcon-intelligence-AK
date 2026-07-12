@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const C = { surface:"#122E1E", surface2:"#183D28", border:"#1F4D34", accent:"#2E7D52", accentL:"#3a9962", sage:"#E5F0E8", dim:"#8aac96", muted:"#5a7a66", risk:"#e05c5c", milestone:"#e0a23a", activity:"#3ae0a2" };
 const inp = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:5, color:C.sage, fontSize:12, padding:"6px 9px", outline:"none", boxSizing:"border-box", fontFamily:"inherit", width:"100%" };
@@ -6,6 +6,14 @@ const Lbl = ({c})=><div style={{fontSize:9,fontWeight:700,color:C.muted,textTran
 
 const CHANGE_TYPES = ["Scope Change","Schedule Change","Budget Change","Quality Change","Resource Change","Process Change","Technical Change","Custom..."];
 const decColor = { approved:C.activity, rejected:C.risk, pending:C.milestone, reviewed:"#3a9ce0", Approved:C.activity, Rejected:C.risk, Pending:C.milestone, Deferred:C.muted };
+
+function nextChangeId(changes, prefix) {
+  const max = (changes || []).reduce((highest, change) => {
+    const n = parseInt(String(change?.id || "").replace(`${prefix}-`, ""), 10);
+    return Number.isFinite(n) ? Math.max(highest, n) : highest;
+  }, 0);
+  return `${prefix}-${String(max + 1).padStart(3,"0")}`;
+}
 
 function StatusBadge({ status }) {
   const s = (status||"pending").toLowerCase();
@@ -21,6 +29,11 @@ export default function Sheet06Change({ data, locked, loginCodes, allSheets, onU
   const [actingAs,  setActingAs]  = useState("");   // who is actioning in the approval tab
   const [rejectId,  setRejectId]  = useState(null);
   const [rejectReason, setRejectReason] = useState("");
+
+  useEffect(() => {
+    setChanges(data.changes || []);
+    setApprovers(data.approvers || []);
+  }, [data.changes, data.approvers]);
 
   const charter     = allSheets?.["01"]?.data?.charter || {};
   const teamMembers = loginCodes || [];
@@ -43,7 +56,7 @@ export default function Sheet06Change({ data, locked, loginCodes, allSheets, onU
   };
 
   const addChange = () => {
-    const id = `CCR-${String(changes.filter(c=>c.type==="major"||!c.type).length+1).padStart(3,"0")}`;
+    const id = nextChangeId(changes, "CCR");
     saveChanges([...changes, { id, date:new Date().toISOString().split("T")[0], requestedBy:"", changeType:"", description:"", justification:"", impact:"", status:"pending", approvedBy:"", type:"major" }]);
   };
 

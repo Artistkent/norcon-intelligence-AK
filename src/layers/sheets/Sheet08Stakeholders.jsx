@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const C = {
   surface:"#122E1E", surface2:"#183D28", border:"#1F4D34",
@@ -79,6 +79,21 @@ function priorityScore(p, i, inf) {
   return ((parseInt(p)||5)*0.40 + (parseInt(i)||5)*0.35 + (parseInt(inf)||5)*0.25).toFixed(1);
 }
 
+function normaliseStakeholders(stakeholders = []) {
+  return stakeholders.map(s => ({
+    power:5, interest:5, influence:5, ease:5, status:"Identified",
+    scoreHistory:[], statusHistory:[], ...s,
+  }));
+}
+
+function nextStakeholderId(stakeholders) {
+  const max = (stakeholders || []).reduce((highest, item) => {
+    const n = parseInt(String(item?._id || "").replace("SH-", ""), 10);
+    return Number.isFinite(n) ? Math.max(highest, n) : highest;
+  }, 0);
+  return `SH-${String(max + 1).padStart(3,"0")}`;
+}
+
 // ── Derived frequency from APM level + ease ───────────────────────────────────
 function derivedFrequency(apmLevel, ease) {
   const f = APM_FREQ[apmLevel];
@@ -129,15 +144,14 @@ function PIIESlider({ dim, label, value, onChange, disabled }) {
 // Main Sheet08 component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Sheet08Stakeholders({ data, locked, loginCodes, onUpdate }) {
-  const [stakeholders, setStakeholders] = useState(() =>
-    (data.stakeholders || []).map(s => ({
-      power:5, interest:5, influence:5, ease:5, status:"Identified",
-      scoreHistory:[], statusHistory:[], ...s,
-    }))
-  );
+  const [stakeholders, setStakeholders] = useState(() => normaliseStakeholders(data.stakeholders || []));
   const [expandedIdx, setExpandedIdx] = useState(null);
   const [statusModal, setStatusModal] = useState(null); // { idx, newStatus }
   const [statusReason, setStatusReason] = useState("");
+
+  useEffect(() => {
+    setStakeholders(normaliseStakeholders(data.stakeholders || []));
+  }, [data.stakeholders]);
 
   const teamRoles = [...new Set([
     ...(loginCodes||[]).map(m=>m.name).filter(Boolean),
@@ -224,7 +238,7 @@ export default function Sheet08Stakeholders({ data, locked, loginCodes, onUpdate
 
   const addStakeholder = () => {
     const today = new Date().toISOString().slice(0,10);
-    const id    = `SH-${String(stakeholders.length+1).padStart(3,"0")}`;
+    const id    = nextStakeholderId(stakeholders);
     const next  = [...stakeholders, {
       _id:id, name:"", category:"", contact:"",
       power:5, interest:5, influence:5, ease:5,
