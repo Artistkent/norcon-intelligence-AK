@@ -307,8 +307,8 @@ export default function L3Dashboard({ state, activities, milestones, risks, issu
           {!costChart
             ? <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", padding: 8 }}>
                 {totalPlanned > 0 || totalActual > 0
-                  ? "Set activity dates in Integrated Baseline to display the cost curve."
-                  : "No cost data yet. Add planned costs in Integrated Baseline."}
+                  ? "Set activity dates in Schedule to display the cost curve."
+                  : "No cost data yet. Add planned costs in Schedule."}
               </div>
             : (
               <svg width="100%" height="155" viewBox="0 0 300 155" style={{ display: "block" }}>

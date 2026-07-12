@@ -65,11 +65,28 @@ function normaliseActivity(a) {
   };
 }
 
-function renumberSerial(items, prefix) {
-  return items.map((item, index) => ({
-    ...item,
-    _id: `${prefix}-${String(index + 1).padStart(3,"0")}`,
-  }));
+function renumberSerialWithMap(items, prefix) {
+  const idMap = {};
+  const renumbered = items.map((item, index) => {
+    const nextId = `${prefix}-${String(index + 1).padStart(3,"0")}`;
+    if (item._id && item._id !== nextId) idMap[item._id] = nextId;
+    return { ...item, _id: nextId };
+  });
+  return { items: renumbered, idMap };
+}
+
+function migrateCostData(costData, idMap, validIds) {
+  return Object.entries(costData || {}).reduce((acc, [id, value]) => {
+    const nextId = idMap[id] || id;
+    if (validIds.has(nextId)) acc[nextId] = value;
+    return acc;
+  }, {});
+}
+
+function migrateExpenditureLog(log, idMap, validActivityIds) {
+  return (log || [])
+    .map(entry => ({ ...entry, activityId: idMap[entry.activityId] || entry.activityId }))
+    .filter(entry => !entry.activityId || validActivityIds.has(entry.activityId));
 }
 
 function nextSerialId(items, prefix) {
@@ -86,17 +103,46 @@ export default function Sheet03Schedule({ data, locked, project, loginCodes, onU
   const activities = (data.activities || []).map(normaliseActivity);
   const milestones = (data.milestones || []).map(normaliseActivity);
   const costData = data.costData || {};
+  const readOnly = locked || project?.status === "active";
 
   const teamRoles  = loginCodes.flatMap(lc => [lc.role, lc.deliveryRole].filter(Boolean));
   const roleOptions = [...new Set([...teamRoles, ...ALL_ROLES])];
 
   const updateActivity = (idx, field, value) => {
+    const oldId = activities[idx]?._id;
     const next = activities.map((a,i) => i===idx ? {...a,[field]:value} : a);
+    if (field === "_id" && oldId && value && oldId !== value) {
+      const idMap = { [oldId]: value };
+      const validIds = new Set([...next, ...milestones].map(item => item._id).filter(Boolean));
+      const validActivityIds = new Set(next.map(item => item._id).filter(Boolean));
+      onUpdate({
+        activities:next,
+        milestones,
+        costData: migrateCostData(costData, idMap, validIds),
+        expenditureLog: migrateExpenditureLog(data.expenditureLog || [], idMap, validActivityIds),
+        __idMap: idMap,
+      }, "in-progress");
+      return;
+    }
     onUpdate({ activities:next, milestones }, "in-progress");
   };
 
   const updateMilestone = (idx, field, value) => {
+    const oldId = milestones[idx]?._id;
     const next = milestones.map((m,i) => i===idx ? {...m,[field]:value} : m);
+    if (field === "_id" && oldId && value && oldId !== value) {
+      const idMap = { [oldId]: value };
+      const validIds = new Set([...activities, ...next].map(item => item._id).filter(Boolean));
+      const validActivityIds = new Set(activities.map(item => item._id).filter(Boolean));
+      onUpdate({
+        activities,
+        milestones:next,
+        costData: migrateCostData(costData, idMap, validIds),
+        expenditureLog: migrateExpenditureLog(data.expenditureLog || [], idMap, validActivityIds),
+        __idMap: idMap,
+      }, "in-progress");
+      return;
+    }
     onUpdate({ activities, milestones:next }, "in-progress");
   };
 
@@ -131,12 +177,42 @@ export default function Sheet03Schedule({ data, locked, project, loginCodes, onU
   };
 
   const removeActivity  = idx => {
+    const removedId = activities[idx]?._id;
     const next = activities.filter((_,i)=>i!==idx);
-    onUpdate({ activities: project?.status === "active" ? next : renumberSerial(next, "ACT"), milestones }, "in-progress");
+    if (project?.status === "active") {
+      onUpdate({ activities: next, milestones }, "in-progress");
+      return;
+    }
+    const { items, idMap } = renumberSerialWithMap(next, "ACT");
+    const validIds = new Set([...items, ...milestones].map(item => item._id).filter(Boolean));
+    const validActivityIds = new Set(items.map(item => item._id).filter(Boolean));
+    onUpdate({
+      activities: items,
+      milestones,
+      costData: migrateCostData(costData, idMap, validIds),
+      expenditureLog: migrateExpenditureLog(data.expenditureLog || [], idMap, validActivityIds),
+      __idMap: idMap,
+      __removedIds: [removedId].filter(Boolean),
+    }, "in-progress");
   };
   const removeMilestone = idx => {
+    const removedId = milestones[idx]?._id;
     const next = milestones.filter((_,i)=>i!==idx);
-    onUpdate({ activities, milestones: project?.status === "active" ? next : renumberSerial(next, "MS") }, "in-progress");
+    if (project?.status === "active") {
+      onUpdate({ activities, milestones: next }, "in-progress");
+      return;
+    }
+    const { items, idMap } = renumberSerialWithMap(next, "MS");
+    const validIds = new Set([...activities, ...items].map(item => item._id).filter(Boolean));
+    const validActivityIds = new Set(activities.map(item => item._id).filter(Boolean));
+    onUpdate({
+      activities,
+      milestones: items,
+      costData: migrateCostData(costData, idMap, validIds),
+      expenditureLog: migrateExpenditureLog(data.expenditureLog || [], idMap, validActivityIds),
+      __idMap: idMap,
+      __removedIds: [removedId].filter(Boolean),
+    }, "in-progress");
   };
 
   const Section = ({title,count}) => (
@@ -171,24 +247,24 @@ export default function Sheet03Schedule({ data, locked, project, loginCodes, onU
       {activities.map((a,i) => (
         <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:7,padding:"10px 12px",marginBottom:8}}>
           <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr 1fr auto",gap:8,alignItems:"end"}}>
-            <div><Lbl c="ID"/><EditableField value={a._id} disabled={locked} onChange={v=>updateActivity(i,"_id",v)} placeholder="ACT-001"/></div>
-            <div><Lbl c="Activity Name"/><EditableField value={a.name} disabled={locked} onChange={v=>updateActivity(i,"name",v)} placeholder="Activity description"/></div>
-            <div><Lbl c="APM Phase"/><EditableSelect value={a.phase} disabled={locked} onChange={v=>updateActivity(i,"phase",v)} options={APM_PHASES} placeholder="Select phase..."/></div>
-            <div><Lbl c="Responsible"/><EditableSelect value={a.responsible} disabled={locked} onChange={v=>updateActivity(i,"responsible",v)} options={roleOptions} placeholder="Select role..."/></div>
-            {!locked && <button onClick={()=>removeActivity(i)} style={{background:"none",border:"none",color:C.risk,cursor:"pointer",fontSize:16,paddingBottom:2,alignSelf:"end"}}>✕</button>}
+            <div><Lbl c="ID"/><EditableField value={a._id} disabled={readOnly} onChange={v=>updateActivity(i,"_id",v)} placeholder="ACT-001"/></div>
+            <div><Lbl c="Activity Name"/><EditableField value={a.name} disabled={readOnly} onChange={v=>updateActivity(i,"name",v)} placeholder="Activity description"/></div>
+            <div><Lbl c="APM Phase"/><EditableSelect value={a.phase} disabled={readOnly} onChange={v=>updateActivity(i,"phase",v)} options={APM_PHASES} placeholder="Select phase..."/></div>
+            <div><Lbl c="Responsible"/><EditableSelect value={a.responsible} disabled={readOnly} onChange={v=>updateActivity(i,"responsible",v)} options={roleOptions} placeholder="Select role..."/></div>
+            {!locked && project?.status !== "active" && <button onClick={()=>removeActivity(i)} style={{background:"none",border:"none",color:C.risk,cursor:"pointer",fontSize:16,paddingBottom:2,alignSelf:"end"}}>✕</button>}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:8}}>
-            <div><Lbl c="Start Date"/><input style={inp} type="date" value={a.startDate||""} disabled={locked} onChange={e=>updateActivity(i,"startDate",e.target.value)}/></div>
-            <div><Lbl c="End Date"/><input style={inp} type="date" value={a.targetDate||""} disabled={locked} onChange={e=>updateActivity(i,"targetDate",e.target.value)}/></div>
-            <div><Lbl c="Planned Cost (GBP)"/><input style={{...inp,textAlign:"right"}} type="number" min="0" step="0.01" value={costData[a._id]?.plannedAmount||""} disabled={locked} onChange={e=>updateCost(a._id,e.target.value)} placeholder="0.00"/></div>
+            <div><Lbl c="Start Date"/><input style={inp} type="date" value={a.startDate||""} disabled={readOnly} onChange={e=>updateActivity(i,"startDate",e.target.value)}/></div>
+            <div><Lbl c="End Date"/><input style={inp} type="date" value={a.targetDate||""} disabled={readOnly} onChange={e=>updateActivity(i,"targetDate",e.target.value)}/></div>
+            <div><Lbl c="Planned Cost (GBP)"/><input style={{...inp,textAlign:"right"}} type="number" min="0" step="0.01" value={costData[a._id]?.plannedAmount||""} disabled={readOnly} onChange={e=>updateCost(a._id,e.target.value)} placeholder="0.00"/></div>
           </div>
           <div style={{marginTop:8}}>
             <Lbl c="Description (optional)"/>
-            <EditableField value={a.description} disabled={locked} onChange={v=>updateActivity(i,"description",v)} placeholder="Additional detail..."/>
+            <EditableField value={a.description} disabled={readOnly} onChange={v=>updateActivity(i,"description",v)} placeholder="Additional detail..."/>
           </div>
         </div>
       ))}
-      {!locked && (
+      {!locked && project?.status !== "active" && (
         <button onClick={addActivity} style={{padding:"7px 14px",background:"none",border:`1px dashed ${C.border}`,borderRadius:6,color:C.dim,fontSize:12,cursor:"pointer",width:"100%",marginBottom:8}}>
           + Add Activity
         </button>
@@ -200,20 +276,20 @@ export default function Sheet03Schedule({ data, locked, project, loginCodes, onU
       {milestones.map((m,i) => (
         <div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`3px solid ${C.milestone}`,borderRadius:7,padding:"10px 12px",marginBottom:8}}>
           <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr 150px 140px auto",gap:8,alignItems:"end"}}>
-            <div><Lbl c="ID"/><EditableField value={m._id} disabled={locked} onChange={v=>updateMilestone(i,"_id",v)} placeholder="MS-001"/></div>
-            <div><Lbl c="Milestone Name"/><EditableField value={m.name} disabled={locked} onChange={v=>updateMilestone(i,"name",v)} placeholder="Milestone name"/></div>
-            <div><Lbl c="APM Phase"/><EditableSelect value={m.phase} disabled={locked} onChange={v=>updateMilestone(i,"phase",v)} options={APM_PHASES} placeholder="Select phase..."/></div>
-            <div><Lbl c="Target Date"/><input style={inp} type="date" value={m.targetDate||""} disabled={locked} onChange={e=>updateMilestone(i,"targetDate",e.target.value)}/></div>
-            <div><Lbl c="Planned Cost (GBP)"/><input style={{...inp,textAlign:"right"}} type="number" min="0" step="0.01" value={costData[m._id]?.plannedAmount||""} disabled={locked} onChange={e=>updateCost(m._id,e.target.value)} placeholder="0.00"/></div>
-            {!locked && <button onClick={()=>removeMilestone(i)} style={{background:"none",border:"none",color:C.risk,cursor:"pointer",fontSize:16,paddingBottom:2,alignSelf:"end"}}>✕</button>}
+            <div><Lbl c="ID"/><EditableField value={m._id} disabled={readOnly} onChange={v=>updateMilestone(i,"_id",v)} placeholder="MS-001"/></div>
+            <div><Lbl c="Milestone Name"/><EditableField value={m.name} disabled={readOnly} onChange={v=>updateMilestone(i,"name",v)} placeholder="Milestone name"/></div>
+            <div><Lbl c="APM Phase"/><EditableSelect value={m.phase} disabled={readOnly} onChange={v=>updateMilestone(i,"phase",v)} options={APM_PHASES} placeholder="Select phase..."/></div>
+            <div><Lbl c="Target Date"/><input style={inp} type="date" value={m.targetDate||""} disabled={readOnly} onChange={e=>updateMilestone(i,"targetDate",e.target.value)}/></div>
+            <div><Lbl c="Planned Cost (GBP)"/><input style={{...inp,textAlign:"right"}} type="number" min="0" step="0.01" value={costData[m._id]?.plannedAmount||""} disabled={readOnly} onChange={e=>updateCost(m._id,e.target.value)} placeholder="0.00"/></div>
+            {!locked && project?.status !== "active" && <button onClick={()=>removeMilestone(i)} style={{background:"none",border:"none",color:C.risk,cursor:"pointer",fontSize:16,paddingBottom:2,alignSelf:"end"}}>✕</button>}
           </div>
           <div style={{marginTop:8}}>
             <Lbl c="Description (optional)"/>
-            <EditableField value={m.description} disabled={locked} onChange={v=>updateMilestone(i,"description",v)} placeholder="What does this milestone mark?"/>
+            <EditableField value={m.description} disabled={readOnly} onChange={v=>updateMilestone(i,"description",v)} placeholder="What does this milestone mark?"/>
           </div>
         </div>
       ))}
-      {!locked && (
+      {!locked && project?.status !== "active" && (
         <button onClick={addMilestone} style={{padding:"7px 14px",background:"none",border:`1px dashed ${C.border}`,borderRadius:6,color:C.dim,fontSize:12,cursor:"pointer",width:"100%"}}>
           + Add Milestone
         </button>

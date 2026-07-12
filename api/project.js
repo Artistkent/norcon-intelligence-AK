@@ -58,10 +58,39 @@ function collectLoginMembers(state) {
   return [...byCode.values()];
 }
 
+function collectAuthMembers(state) {
+  const externalUsers = Array.isArray(state?.l2?.sheets?.["02"]?.data?.externalUsers)
+    ? state.l2.sheets["02"].data.externalUsers
+    : [];
+  const externalMembers = externalUsers
+    .filter(user => user?.loginCode)
+    .map(user => ({
+      loginCode: user.loginCode,
+      name: user.name || user.organisation || `${user.type || "External"} user`,
+      role: user.type === "sponsor" ? "Project Sponsor" : user.type === "observer" ? "Observer" : "Guest",
+      accessType: user.type || "guest",
+      isExternal: true,
+    }));
+
+  const byCode = new Map();
+  [...collectLoginMembers(state), ...externalMembers].forEach((member) => {
+    const code = normaliseCode(member?.loginCode);
+    if (!code) return;
+    byCode.set(code, { ...(byCode.get(code) || {}), ...member, loginCode: code });
+  });
+  return [...byCode.values()];
+}
+
 function findMember(state, memberCode) {
   const code = normaliseCode(memberCode);
   if (!code) return null;
   return collectLoginMembers(state).find(member => normaliseCode(member.loginCode) === code) || null;
+}
+
+function findAuthMember(state, memberCode) {
+  const code = normaliseCode(memberCode);
+  if (!code) return null;
+  return collectAuthMembers(state).find(member => normaliseCode(member.loginCode) === code) || null;
 }
 
 function isProjectManager(member) {
@@ -110,20 +139,16 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const { projectCode, memberCode } = req.query;
       if (!projectCode) return res.status(400).json({ error: "projectCode required" });
+      if (!memberCode) return res.status(401).json({ error: "memberCode required" });
 
       const key = projectKey(projectCode);
       const raw = await redisGet(key);
       if (!raw) return res.status(404).json({ error: "Project not found" });
 
       const project = JSON.parse(raw);
-
-      if (memberCode) {
-        const member = findMember(project, memberCode);
-        if (!member) return res.status(401).json({ error: "Invalid member code" });
-        return res.status(200).json({ project, member });
-      }
-
-      return res.status(200).json({ project });
+      const member = findAuthMember(project, memberCode);
+      if (!member) return res.status(401).json({ error: "Invalid member code" });
+      return res.status(200).json({ project, member });
     }
 
     if (req.method === "POST") {

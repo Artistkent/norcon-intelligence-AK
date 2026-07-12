@@ -741,7 +741,7 @@ export default function L3Risks({ state, risks, member, onStateChange, loginCode
 
   const canEdit    = member?.isPM;
   // Non-PM logged-in team members can submit proposals
-  const canPropose = !!(member?.loginCode) && !member?.isPM;
+  const canPropose = !!(member?.loginCode) && !member?.isPM && member?.isExternal !== true;
 
   const sheets          = state?.l2?.sheets || {};
   const issues          = sheets["05"]?.data?.issues        || [];

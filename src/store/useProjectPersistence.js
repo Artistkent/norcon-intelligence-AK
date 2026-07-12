@@ -30,8 +30,12 @@ export function useProjectPersistence() {
   }, []);
 
   // Load project state by code
-  const loadState = useCallback(async (projectCode) => {
-    const res = await fetch(`/api/state?code=${projectCode.toUpperCase()}`, {
+  const loadState = useCallback(async (projectCode, memberCode) => {
+    const params = new URLSearchParams({
+      code: projectCode.toUpperCase(),
+      memberCode: (memberCode || '').toUpperCase(),
+    });
+    const res = await fetch(`/api/state?${params.toString()}`, {
       credentials: 'same-origin',
     });
     if (!res.ok) {

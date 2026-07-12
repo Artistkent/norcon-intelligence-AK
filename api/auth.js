@@ -80,9 +80,10 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid team member code. Check your login code.' });
     }
 
-    const isPM = member.isPM === true || member.role === 'Project Manager';
-    const isSponsor = member.role === 'Project Sponsor' || member.role === 'Project Director';
-    const canApprove = isPM || isSponsor;
+    const isExternal = member.isExternal === true;
+    const isPM = !isExternal && (member.isPM === true || member.role === 'Project Manager');
+    const isSponsor = !isExternal && (member.role === 'Project Sponsor' || member.role === 'Project Director');
+    const canApprove = !isExternal && (isPM || isSponsor);
     const rights = {
       isPM,
       isSponsor,
@@ -90,7 +91,7 @@ export default async function handler(req, res) {
       role: member.role,
       name: member.name,
       loginCode: member.loginCode,
-      isExternal: member.isExternal === true,
+      isExternal,
       accessType: member.accessType || null,
       raciRights: buildRaciRights(member.loginCode, state),
     };

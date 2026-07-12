@@ -117,7 +117,7 @@ export default function L3RACI({ raciData, teamMembers, member, activities, mile
                     {/* Phase */}
                     <td style={{ padding:"7px 10px", color:C.muted, fontSize:11 }}>{row.phase || "—"}</td>
 
-                    {/* Due Date — read-only from Integrated Baseline */}
+                    {/* Due Date — read-only from Schedule */}
                     <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color: isOverdue ? C.risk : C.dim }}>
                       {fmtDate(item?.targetDate)}
                     </td>

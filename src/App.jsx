@@ -21,6 +21,106 @@ function getSaveMemberCode(state, member) {
   return pm?.loginCode || "";
 }
 
+function isProjectManagerEntry(member) {
+  return !!member && (member.isPM === true || member.role === "Project Manager");
+}
+
+function getProjectManagerCode(state, member) {
+  if (isProjectManagerEntry(member) && member?.loginCode) return member.loginCode;
+  const teamMembers = state.l2?.sheets?.["02"]?.data?.teamMembers || [];
+  const pm = [...(state.l2?.loginCodes || []), ...teamMembers].find(isProjectManagerEntry);
+  return pm?.loginCode || "";
+}
+
+function hasProjectManagerCode(state) {
+  return !!getProjectManagerCode(state, null);
+}
+
+function isReadOnlyMember(member) {
+  return member?.isExternal === true && !member?.isPM && !member?.canApprove;
+}
+
+function migrateActivityReferences(state, idMap = {}, removedIds = []) {
+  const mappings = Object.fromEntries(
+    Object.entries(idMap || {}).filter(([from, to]) => from && to && from !== to)
+  );
+  const removed = new Set((removedIds || []).filter(Boolean));
+  if (Object.keys(mappings).length === 0 && removed.size === 0) return state;
+
+  const replaceId = (id) => mappings[id] || id;
+  const isRemoved = (id) => removed.has(id);
+  const migrateRows = (rows = []) => rows
+    .filter(row => !isRemoved(row.taskId))
+    .map(row => ({ ...row, taskId: replaceId(row.taskId) }));
+  const migrateChanges = (changes = []) => changes
+    .filter(change => !["elementId", "linkedId", "targetId", "sourceId"].some(key => isRemoved(change?.[key])))
+    .map(change => {
+      const next = { ...change };
+      ["elementId", "linkedId", "targetId", "sourceId"].forEach(key => {
+        if (next[key]) next[key] = replaceId(next[key]);
+      });
+      return next;
+    });
+  const migrateActLinks = (actLinks = {}) => {
+    if (!actLinks || typeof actLinks !== "object" || Array.isArray(actLinks)) return actLinks;
+    return Object.entries(actLinks).reduce((acc, [key, value]) => {
+      if (isRemoved(key)) return acc;
+      const nextKey = replaceId(key);
+      if (typeof value === "string") {
+        acc[nextKey] = isRemoved(value) ? "" : replaceId(value);
+      } else if (Array.isArray(value)) {
+        acc[nextKey] = value.filter(v => !isRemoved(v)).map(v => typeof v === "string" ? replaceId(v) : v);
+      } else {
+        acc[nextKey] = value;
+      }
+      return acc;
+    }, {});
+  };
+
+  const sheets = state.l2?.sheets || {};
+  const d04 = sheets["04"]?.data || {};
+  const d06 = sheets["06"]?.data || {};
+  const d10 = sheets["10"]?.data || {};
+
+  return {
+    ...state,
+    sustainData: state.sustainData ? {
+      ...state.sustainData,
+      evidence: (state.sustainData.evidence || [])
+        .filter(e => !isRemoved(e.activityId))
+        .map(e => ({ ...e, activityId: replaceId(e.activityId) })),
+    } : state.sustainData,
+    l2: {
+      ...state.l2,
+      sheets: {
+        ...sheets,
+        "04": {
+          ...sheets["04"],
+          data: {
+            ...d04,
+            raciRows: migrateRows(d04.raciRows || []),
+            customRows: migrateRows(d04.customRows || []),
+          },
+        },
+        "06": {
+          ...sheets["06"],
+          data: {
+            ...d06,
+            changes: migrateChanges(d06.changes || []),
+          },
+        },
+        "10": {
+          ...sheets["10"],
+          data: {
+            ...d10,
+            actLinks: migrateActLinks(d10.actLinks || {}),
+          },
+        },
+      },
+    },
+  };
+}
+
 function buildLaunchedState(state, loginCode) {
   const lastActiveTab = state.project?.lastActiveTab || "dashboard";
   const alreadyActive = state.project?.status === "active";
@@ -93,6 +193,7 @@ export default function App() {
   useEffect(() => {
     const code = state.project?.code;
     if (!code || screen !== "app") return;
+    if (isReadOnlyMember(member)) return;
     const memberCode = getSaveMemberCode(state, member);
     if (!memberCode) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -216,14 +317,16 @@ export default function App() {
     // ── Normal sheet update ───────────────────────────────────────────────────
     setState(prev => {
       const prevSheet = prev.l2.sheets[sheetId] || { data:{}, locked:false, status:"empty" };
-      const nextData  = { ...prevSheet.data, ...data };
+      const incomingData = data || {};
+      const { __idMap, __removedIds, ...cleanData } = incomingData;
+      const nextData  = { ...prevSheet.data, ...cleanData };
       let nextCodes   = prev.l2.loginCodes || [];
 
       // ── Team sync (H1 fix) ────────────────────────────────────────────────
       // When Sheet02 writes teamMembers, upsert named+coded members into loginCodes
       // AND remove loginCode entries for members no longer in the teamMembers list.
-      if (sheetId === "02" && Array.isArray(data.teamMembers)) {
-        const teamCodes = new Set(data.teamMembers.map(m => m.loginCode).filter(Boolean));
+      if (sheetId === "02" && Array.isArray(cleanData.teamMembers)) {
+        const teamCodes = new Set(cleanData.teamMembers.map(m => m.loginCode).filter(Boolean));
         const isExternalCode = (code) => /^(SP|GU|OB)-\d{4}$/.test(code||"");
         if (teamCodes.size > 0) {
           nextCodes = nextCodes.filter(lc =>
@@ -232,7 +335,7 @@ export default function App() {
         }
 
         // Upsert members with both name and loginCode
-        data.teamMembers.forEach(member => {
+        cleanData.teamMembers.forEach(member => {
           if (!member.loginCode || !member.name) return;
           const existingIdx = nextCodes.findIndex(lc => lc.loginCode === member.loginCode);
           const entry = {
@@ -250,7 +353,7 @@ export default function App() {
         });
       }
 
-      return {
+      const nextState = {
         ...prev,
         l2: {
           ...prev.l2,
@@ -265,6 +368,9 @@ export default function App() {
           },
         },
       };
+      return sheetId === "03"
+        ? migrateActivityReferences(nextState, __idMap, __removedIds)
+        : nextState;
     });
   }, []);
 
@@ -369,7 +475,7 @@ export default function App() {
 
   const handleLaunch = useCallback(async () => {
     const code = state.project?.code;
-    const memberCode = getSaveMemberCode(state, member);
+    const memberCode = getProjectManagerCode(state, member);
     if (!code) {
       setSaveError("Project code is required before launch");
       setSaveStatus("error");
@@ -416,7 +522,7 @@ export default function App() {
   }
 
   const approvedCount = Object.values(state.l2.sheets).filter(s => s.locked).length;
-  const l3Unlocked    = state.l2.loginCodes.length > 0;
+  const l3Unlocked    = hasProjectManagerCode(state);
   const projectActive = state.project?.status === "active";
 
   return (
@@ -437,7 +543,9 @@ export default function App() {
           onConfirmBaseline={handleConfirmBaseline}
           onApplyCCRToPlan={handleApplyCCRToPlan}
           initialTab={state.project?.lastActiveTab || "dashboard"}
-          onTabChange={handleTabChange}/>
+          onTabChange={handleTabChange}
+          saveStatus={saveStatus}
+          saveError={saveError}/>
       )}
 
       {/* ── Project Setup ── */}
@@ -445,9 +553,9 @@ export default function App() {
         <>
           <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 20px",
             display:"flex", alignItems:"center", gap:12, height:48, flexShrink:0 }}>
-            <div style={{ width:28, height:28, background:C.accent, borderRadius:6,
-              display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🏗️</div>
-            <div style={{ fontSize:14, fontWeight:700, color:C.sage }}>NorCon Projects</div>
+            <img src="/norcon-logo.png" alt="NorCon Projects"
+              style={{ width:112, height:36, objectFit:"contain", background:"#fff", borderRadius:6,
+                padding:"2px 6px", flexShrink:0, boxSizing:"border-box" }}/>
             {state.project?.name && (
               <>
                 <div style={{ color:C.border, fontSize:16 }}>·</div>
