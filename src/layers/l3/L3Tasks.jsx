@@ -127,7 +127,7 @@ export default function L3Tasks({ state, activities, milestones, member, raciDat
               {/* Phase */}
               <div style={{ fontSize:11, color:C.muted }}>{item.phase || "—"}</div>
 
-              {/* Due Date — read-only, sourced from Gantt/Integrated Baseline */}
+              {/* Due Date — read-only, sourced from Schedule */}
               <div style={{ fontSize:11, color: isOverdue ? C.risk : C.dim, fontFamily:"monospace" }}>
                 {fmtDate(item.targetDate)}
               </div>

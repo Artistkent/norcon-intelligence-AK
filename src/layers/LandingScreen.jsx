@@ -58,14 +58,10 @@ export default function LandingScreen({ onCreateNew, onLogin, lastLogin }) {
 
       {/* Logo + title */}
       <div style={{ textAlign:"center", marginBottom:40 }}>
-        <div style={{
-          width:56, height:56, background:C.accent, borderRadius:12,
-          display:"flex", alignItems:"center", justifyContent:"center",
-          fontSize:26, margin:"0 auto 16px",
-        }}>🏗️</div>
-        <div style={{ fontSize:26, fontWeight:700, color:C.sage, marginBottom:6 }}>
-          NorCon Projects
-        </div>
+        <img src="/norcon-logo.png" alt="NorCon Projects"
+          style={{ width:180, height:168, objectFit:"contain", background:"#fff",
+            borderRadius:10, padding:8, margin:"0 auto 16px", display:"block",
+            boxSizing:"border-box" }}/>
         <div style={{ fontSize:14, color:C.muted }}>
           AI-driven project management for teams that deliver
         </div>
