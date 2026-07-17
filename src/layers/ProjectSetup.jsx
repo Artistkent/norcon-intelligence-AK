@@ -10,6 +10,7 @@ import Sheet06Change       from "./sheets/Sheet06Change.jsx";
 import Sheet07KDTracker    from "./sheets/Sheet07KDTracker.jsx";
 import Sheet08Stakeholders from "./sheets/Sheet08Stakeholders.jsx";
 import Sheet10Sustainability from "./sheets/Sheet10Sustainability.jsx";
+import DragAndDropFile from "../components/dragAndDropFile.jsx";
 
 const C = {
   bg:"#0D2B1B", surface:"#122E1E", surface2:"#183D28", border:"#1F4D34",
@@ -1176,50 +1177,68 @@ Use ONLY these likelihood/impact values: "1 - Low", "2 - Medium", "3 - High".`;
     }
   };
 
-  const handleFileUpload = async (e) => {
-    const files = Array.from(e.target.files||[]);
-    if (!files.length) return;
-    setExtracting(true);
-    setPipelineStage("reading");
-    const fileContents = [];
-    for (const file of files) {
-      setAiStatus(`Reading ${file.name}…`);
-      try {
-        let text = "";
-        const name = file.name.toLowerCase();
-        if (name.endsWith(".docx")) {
-          const buf = await file.arrayBuffer();
-          const res = await mammoth.extractRawText({ arrayBuffer: buf });
-          text = res.value.replace(/\n{3,}/g,"\n\n").trim();
-        } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
-          text = await readExcelAsText(file);
-        } else {
-          text = await file.text();
-        }
-        if (text.trim()) {
-          fileContents.push({ name: file.name, text });
-          setFileList(prev => [...prev, file.name]);
-        }
-      } catch(err) { setAiStatus(`⚠ ${file.name}: ${err.message}`); }
-    }
+  const handleFileUpload = async (filesOrEvent) => {
+  // Determine if we got an Event or the Files directly
+  let files;
+  if (filesOrEvent && filesOrEvent.target) {
+    // It's an Event (from the <input>)
+    files = Array.from(filesOrEvent.target.files || []);
+  } else {
+    // It's the Files directly (from DragAndDropFile)
+    files = Array.from(filesOrEvent || []);
+  }
 
-    if (fileContents.length > 0) {
-      try {
-        const intermediateText = await synthesiseDocuments(fileContents, fileContents.map(f=>f.name));
-        const extracted = await extractSchemaFromDocument(intermediateText);
-        applyExtractedData(extracted);
-        // Only generate missing content if still in setup — never write to sheets post-launch
-        if (state.activeLayer !== "L3") {
-          await generateMissingContent("documents").catch(()=>{});
-        }
-      } catch(err) { setAiStatus(`⚠ Extraction error: ${err.message}`); }
+  if (!files.length) return;
+  
+  setExtracting(true);
+  setPipelineStage("reading");
+  const fileContents = [];
+  
+  for (const file of files) {
+    setAiStatus(`Reading ${file.name}…`);
+    try {
+      let text = "";
+      const name = file.name.toLowerCase();
+      if (name.endsWith(".docx")) {
+        const buf = await file.arrayBuffer();
+        const res = await mammoth.extractRawText({ arrayBuffer: buf });
+        text = res.value.replace(/\n{3,}/g,"\n\n").trim();
+      } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+        text = await readExcelAsText(file);
+      } else {
+        text = await file.text();
+      }
+      if (text.trim()) {
+        fileContents.push({ name: file.name, text });
+        setFileList(prev => [...prev, file.name]);
+      }
+    } catch(err) { 
+      setAiStatus(`⚠ ${file.name}: ${err.message}`); 
     }
+  }
 
-    setExtracting(false);
-    setPipelineStage(null);
-    setAiStatus("");
-    e.target.value = "";
-  };
+  if (fileContents.length > 0) {
+    try {
+      const intermediateText = await synthesiseDocuments(fileContents, fileContents.map(f=>f.name));
+      const extracted = await extractSchemaFromDocument(intermediateText);
+      applyExtractedData(extracted);
+      if (state.activeLayer !== "L3") {
+        await generateMissingContent("documents").catch(()=>{});
+      }
+    } catch(err) { 
+      setAiStatus(`⚠ Extraction error: ${err.message}`); 
+    }
+  }
+
+  setExtracting(false);
+  setPipelineStage(null);
+  setAiStatus("");
+  
+  // Only clear the input if we got an Event (so we can reset e.target.value)
+  if (filesOrEvent && filesOrEvent.target) {
+    filesOrEvent.target.value = "";
+  }
+};
 
   const handleTextExtract = async () => {
     if (!pasteText.trim()) return;
@@ -1564,12 +1583,14 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
 
             <div style={{ flex:1, minHeight:0, overflowY:"auto" }}>
               {uploadMode === "file" ? (
+                <DragAndDropFile handleFileUpload={handleFileUpload}>
                 <label style={{ display:"block", padding:"22px 14px", border:`1.5px dashed ${C.border}`,
                   borderRadius:8, cursor:"pointer", textAlign:"center", fontSize:12, color:C.muted, background:C.surface2 }}>
                   <input type="file" multiple accept=".docx,.xlsx,.xls,.pdf,.txt,.csv" onChange={handleFileUpload} style={{ display:"none" }}/>
                   {extracting ? <span style={{ color:C.accentL }}>⚡ {aiStatus || "Processing…"}</span>
                     : <>Drop files or click<br/><span style={{ fontSize:10 }}>.docx · .xlsx · .pdf · .txt</span></>}
                 </label>
+                </DragAndDropFile>
               ) : (
                 <div>
                   <textarea value={pasteText} onChange={e=>setPasteText(e.target.value)}
