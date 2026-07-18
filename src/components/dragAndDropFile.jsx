@@ -34,7 +34,7 @@ class DragAndDropFile extends Component {
     e.stopPropagation()
     this.setState({dragging: false})
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      this.props.handleFileUpload(e.dataTransfer.files)
+      this.props.handleFileSelect(e.dataTransfer.files)
       e.dataTransfer.clearData()
       this.dragCounter = 0
     }

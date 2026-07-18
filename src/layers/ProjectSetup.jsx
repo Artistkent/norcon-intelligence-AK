@@ -763,6 +763,11 @@ export default function ProjectSetup({ state, onSheetUpdate, onSheetApprove, onS
   const [dirtySheet, setDirtySheet] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(null);
 
+  //For file uploads, we need to track both the File objects and their names separately.
+  const [selectedFiles, setSelectedFiles] = useState([]);  // Stores the actual File objects
+  const [selectedFileNames, setSelectedFileNames] = useState([]); // Just the names for display
+
+
   const getCharterField = (key) => sheets["01"]?.data?.charter?.[key] || "";
   const isFieldKnown = (key) => {
     switch(key) {
@@ -1177,7 +1182,8 @@ Use ONLY these likelihood/impact values: "1 - Low", "2 - Medium", "3 - High".`;
     }
   };
 
-  const handleFileUpload = async (filesOrEvent) => {
+  // ── File upload and text paste handlers ─────────────────────────────────────
+  const handleFileSelect = async (filesOrEvent) => {
   // Determine if we got an Event or the Files directly
   let files;
   if (filesOrEvent && filesOrEvent.target) {
@@ -1189,12 +1195,33 @@ Use ONLY these likelihood/impact values: "1 - Low", "2 - Medium", "3 - High".`;
   }
 
   if (!files.length) return;
+
+  // Store the files for later processing
+  setSelectedFiles(files);
+  setSelectedFileNames(files.map(f => f.name));
   
+  // Show a success message or visual confirmation
+  setAiStatus(`📎 ${files.length} file(s) selected. Ready to process.`);
+  
+  // Reset the input if it was from a file input
+  if (filesOrEvent && filesOrEvent.target) {
+    filesOrEvent.target.value = "";
+  }
+};
+
+// Process the selected files and extract data
+const handleProcessFiles = async () => {
+  if (!selectedFiles.length) {
+    setAiStatus("⚠ No files selected. Please upload a file first.");
+    return;
+  }
+
+  // Use the existing processing logic
   setExtracting(true);
   setPipelineStage("reading");
   const fileContents = [];
   
-  for (const file of files) {
+  for (const file of selectedFiles) {
     setAiStatus(`Reading ${file.name}…`);
     try {
       let text = "";
@@ -1234,10 +1261,9 @@ Use ONLY these likelihood/impact values: "1 - Low", "2 - Medium", "3 - High".`;
   setPipelineStage(null);
   setAiStatus("");
   
-  // Only clear the input if we got an Event (so we can reset e.target.value)
-  if (filesOrEvent && filesOrEvent.target) {
-    filesOrEvent.target.value = "";
-  }
+  // Optionally clear selected files after processing
+  setSelectedFiles([]);
+  setSelectedFileNames([]);
 };
 
   const handleTextExtract = async () => {
@@ -1582,16 +1608,91 @@ Return ONLY JSON, no markdown: {"suggestions":["item1","item2","item3","item4","
             </div>
 
             <div style={{ flex:1, minHeight:0, overflowY:"auto" }}>
-              {uploadMode === "file" ? (
-                <DragAndDropFile handleFileUpload={handleFileUpload}>
-                <label style={{ display:"block", padding:"22px 14px", border:`1.5px dashed ${C.border}`,
-                  borderRadius:8, cursor:"pointer", textAlign:"center", fontSize:12, color:C.muted, background:C.surface2 }}>
-                  <input type="file" multiple accept=".docx,.xlsx,.xls,.pdf,.txt,.csv" onChange={handleFileUpload} style={{ display:"none" }}/>
-                  {extracting ? <span style={{ color:C.accentL }}>⚡ {aiStatus || "Processing…"}</span>
-                    : <>Drop files or click<br/><span style={{ fontSize:10 }}>.docx · .xlsx · .pdf · .txt</span></>}
-                </label>
-                </DragAndDropFile>
-              ) : (
+              {uploadMode === "file" ?  (
+  <div>
+    {/* The drop zone - now only selects files, doesn't process */}
+    <DragAndDropFile handleFileSelect={handleFileSelect}>
+      <div style={{ 
+        display: "block", 
+        padding: "22px 14px", 
+        border: `1.5px dashed ${selectedFiles.length ? C.accentL : C.border}`,
+        borderRadius: 8, 
+        cursor: "pointer", 
+        textAlign: "center", 
+        fontSize: 12, 
+        color: selectedFiles.length ? C.accentL : C.muted, 
+        background: selectedFiles.length ? C.accentL + "11" : C.surface2,
+        transition: "all 0.2s"
+      }}>
+        <input 
+          type="file" 
+          multiple 
+          accept=".docx,.xlsx,.xls,.pdf,.txt,.csv" 
+          onChange={handleFileSelect} 
+          style={{ display: "none" }}
+        />
+        {selectedFiles.length > 0 ? (
+          <div>
+            <div style={{ fontSize: 24, marginBottom: 4 }}>📎</div>
+            <div style={{ fontWeight: 600, color: C.accentL }}>
+              {selectedFiles.length} file(s) selected
+            </div>
+            <div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>
+              {selectedFileNames.join(", ")}
+            </div>
+            <button 
+              onClick={() => { setSelectedFiles([]); setSelectedFileNames([]); }}
+              style={{
+                marginTop: 8,
+                padding: "4px 12px",
+                background: C.risk + "22",
+                border: `1px solid ${C.risk}44`,
+                borderRadius: 4,
+                color: C.risk,
+                fontSize: 10,
+                cursor: "pointer"
+              }}
+            >
+              ✕ Change files
+            </button>
+          </div>
+        ) : extracting ? (
+          <span style={{ color: C.accentL }}>⚡ {aiStatus || "Processing…"}</span>
+        ) : (
+          <>
+            Drop files or click<br/>
+            <span style={{ fontSize: 10 }}>.docx · .xlsx · .pdf · .txt</span>
+          </>
+        )}
+      </div>
+    </DragAndDropFile>
+
+    {/* The "Process with AI" button - only appears when files are selected */}
+    {selectedFiles.length > 0 && !extracting && (
+      <button
+        onClick={handleProcessFiles}
+        style={{
+          width: "100%",
+          marginTop: 10,
+          padding: "10px",
+          background: C.accent,
+          border: "none",
+          borderRadius: 6,
+          color: "#fff",
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: "pointer",
+          boxShadow: `0 4px 12px ${C.accent}44`,
+          transition: "all 0.2s"
+        }}
+        onMouseEnter={e => e.currentTarget.style.transform = "scale(1.02)"}
+        onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+      >
+        🤖 Process with AI
+      </button>
+    )}
+  </div>
+) : (
                 <div>
                   <textarea value={pasteText} onChange={e=>setPasteText(e.target.value)}
                     placeholder="Paste your project brief, notes, or summary…"
